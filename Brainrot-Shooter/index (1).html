@@ -1,0 +1,3224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>jBrainRot</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #87ceeb;
+               touch-action: none; overscroll-behavior: none; -webkit-touch-callout: none; }
+  #game { position: fixed; inset: 0; display: block; }
+  body { font-family: "Courier New", Courier, monospace; }
+
+  /* ---------- HUD ---------- */
+  #hud {
+    position: fixed; inset: 0; pointer-events: none;
+    color: #fff; text-shadow: 3px 3px 0 #000, -1px -1px 0 #000;
+    -webkit-user-select: none; user-select: none;
+  }
+  .hud-block { position: absolute; font-weight: bold; }
+  #score   { top: 16px; left: 18px;  font-size: 30px; }
+  #score small { font-size: 15px; opacity: .8; display:block; }
+  #score #wave { color: #ff5bd0; opacity: .95; }
+  #score #remain { color: #fff; opacity: .85; font-size: 14px; }
+  #score #remain b { color: #ff7a7a; }
+  #score #remain.clear b { color: #7CFC00; }
+
+  /* wave banner */
+  #wavebanner {
+    position: fixed; top: 30%; left: 50%; transform: translateX(-50%) scale(1);
+    font-size: 54px; font-weight: bold; color: #ff5bd0;
+    text-shadow: 3px 3px 0 #000, -1px -1px 0 #000; text-align: center;
+    pointer-events: none; opacity: 0; transition: opacity .25s, transform .25s;
+    letter-spacing: 2px;
+  }
+  #wavebanner small { display:block; font-size: 22px; color:#fff; opacity:.85; margin-top:4px; }
+  #wavebanner.show { opacity: 1; transform: translateX(-50%) scale(1.12); }
+  #wavebanner.boss { color: #ff3b3b; font-size: 60px; }
+
+  /* first-sighting callout for a new enemy type */
+  #typetoast { position: fixed; top: 46%; left: 50%; transform: translateX(-50%);
+    font-size: 26px; font-weight: bold; color: #7dff5e; letter-spacing: 1px;
+    text-shadow: 3px 3px 0 #000; text-align: center;
+    pointer-events: none; opacity: 0; transition: opacity .25s; }
+  #typetoast.show { opacity: 1; }
+  #typetoast small { display:block; font-size:15px; color:#fff; opacity:.85; margin-top:2px; }
+
+  /* boss health bar */
+  #bossbar {
+    position: fixed; top: 86px; left: 50%; transform: translateX(-50%);
+    width: 420px; max-width: 70vw; pointer-events: none; text-align: center;
+  }
+  #bossbar.hidden { display: none; }
+  #bossbar span { display:block; font-size: 16px; font-weight: bold; color: #ff5b5b;
+                  text-shadow: 2px 2px 0 #000; letter-spacing: 1px; margin-bottom: 3px; }
+  #bossbar .track { height: 14px; background: rgba(0,0,0,.5); border: 2px solid #000; overflow: hidden; }
+  #bossbar .track > i { display:block; height:100%; width:100%;
+                        background: linear-gradient(#ff6b6b,#b81026); transition: width .12s; }
+  #health  { top: 16px; right: 18px; font-size: 30px; text-align: right; }
+  #lives   { top: 74px; right: 18px; font-size: 24px; text-align: right; color: #ff5b7a;
+             letter-spacing: 2px; text-shadow: 0 0 6px rgba(255,60,90,.6), 3px 3px 0 #000; }
+  #combo {
+    top: 14px; left: 50%; transform: translateX(-50%);
+    font-size: 26px; text-align: center; transition: transform .08s ease-out;
+    color: #ffe14d;
+  }
+  #combo .mult { font-size: 46px; display: block; line-height: .9; }
+  #combo .bar {
+    width: 160px; height: 9px; margin: 5px auto 0; background: rgba(0,0,0,.45);
+    border: 2px solid #000; overflow: hidden;
+  }
+  #combo .bar > i { display:block; height: 100%; width: 0%; background: #ffe14d; }
+  #combo.hidden { opacity: 0; }
+
+  /* health bar */
+  #hpbar { position: fixed; top: 54px; right: 18px; width: 180px; height: 14px;
+           background: rgba(0,0,0,.45); border: 2px solid #000; pointer-events:none; }
+  #hpbar > i { display:block; height:100%; width:100%; background:#46d35a; transition: width .12s; }
+
+  /* crosshair */
+  #cross {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    width: 26px; height: 26px; pointer-events: none;
+  }
+  #cross::before, #cross::after {
+    content:""; position:absolute; background:#fff; box-shadow:0 0 0 1px rgba(0,0,0,.6);
+  }
+  #cross::before { left:50%; top:0; width:2px; height:100%; transform:translateX(-50%); }
+  #cross::after  { top:50%; left:0; height:2px; width:100%; transform:translateY(-50%); }
+  #cross.hit { transform: translate(-50%,-50%) scale(1.7) rotate(45deg); }
+  #cross { transition: transform .07s ease-out; }
+
+  /* sprint-ready bar (just below the crosshair) */
+  #sprint { position: fixed; top: calc(50% + 26px); left: 50%; transform: translateX(-50%);
+            width: 46px; height: 5px; background: rgba(0,0,0,.45); border: 1px solid rgba(0,0,0,.7);
+            pointer-events: none; }
+  #sprint > i { display:block; height:100%; width:100%; background:#5fd0ff; transition: width .05s linear; }
+  #sprint.cooling > i { background:#ff8a3d; }
+
+  /* hitmarker (the flick) */
+  #hitmark { position: fixed; top:50%; left:50%; transform: translate(-50%,-50%);
+             width:30px; height:30px; pointer-events:none; opacity:0; }
+  #hitmark span { position:absolute; width:11px; height:3px; background:#ff3b3b; box-shadow:0 0 3px #000; }
+  #hitmark .a{ top:6px;  left:2px;  transform: rotate(45deg); }
+  #hitmark .b{ top:6px;  right:2px; transform: rotate(-45deg); }
+  #hitmark .c{ bottom:6px;left:2px;  transform: rotate(-45deg); }
+  #hitmark .d{ bottom:6px;right:2px; transform: rotate(45deg); }
+
+  /* damage flash */
+  #dmg { position: fixed; inset:0; pointer-events:none; opacity:0;
+         box-shadow: inset 0 0 220px 80px rgba(220,0,0,.9); transition: opacity .12s; }
+
+  /* low-health vignette (separate element from #dmg so the flash logic is untouched) */
+  #lowhp { position: fixed; inset:0; pointer-events:none; opacity:0;
+           box-shadow: inset 0 0 160px 60px rgba(200,0,0,.8); }
+  #lowhp.on { animation: lowpulse 1s ease-in-out infinite; }
+  @keyframes lowpulse { 0%,100% { opacity:.25; } 50% { opacity:.7; } }
+
+  /* post-revive invulnerability shield (distinct blue pulse, not the red damage tones) */
+  #invuln { position: fixed; inset:0; pointer-events:none; opacity:0;
+            box-shadow: inset 0 0 150px 55px rgba(90,180,255,.75); }
+  #invuln.on { animation: invpulse .4s ease-in-out infinite; }
+  @keyframes invpulse { 0%,100% { opacity:.12; } 50% { opacity:.5; } }
+
+  /* mute indicator */
+  #muteind { bottom: 80px; right: 20px; top: auto; font-size: 13px; letter-spacing: 2px;
+             color:#ff8a8a; opacity:0; transition: opacity .2s; }
+  #muteind.on { opacity:.9; }
+
+  /* floating score numbers layer */
+  #floaters { position: fixed; inset:0; pointer-events:none; overflow:hidden; }
+  .floater { position:absolute; font-weight:bold; color:#ffe14d; font-size:24px;
+             text-shadow:2px 2px 0 #000; animation: floatUp .9s ease-out forwards; }
+  .floater.head { color:#5fd0ff; }
+  .floater.crit { color:#ff2cd8; font-size:30px; letter-spacing:1px;
+                  text-shadow:2px 2px 0 #000, 0 0 12px rgba(255,44,216,.7); }
+  @keyframes floatUp { from{ transform:translate(-50%,0) scale(.7); opacity:0; }
+    20%{ opacity:1; } to{ transform:translate(-50%,-70px) scale(1.2); opacity:0; } }
+
+  /* radar — canvas draws the arena's own outline, so no frame shape here */
+  #radar { position: fixed; bottom: 16px; left: 16px; width: 156px; height: 156px;
+           pointer-events: none;
+           filter: drop-shadow(0 3px 8px rgba(0,0,0,.5)); }
+
+  /* ammo readout */
+  #ammo { bottom: 16px; left: 50%; transform: translateX(-50%); top: auto;
+          font-size: 36px; color:#ffe14d; text-align:center; line-height:1;
+          text-shadow: 3px 3px 0 #000, -1px -1px 0 #000; }
+  #ammo small { display:block; font-size:13px; color:#fff; opacity:.8; letter-spacing:3px; }
+  #ammo.reload { color:#ff6b3d; }
+
+  /* grenade readout */
+  #nades { bottom: 16px; right: 20px; top: auto; font-size: 36px;
+           color:#9bd34a; text-align:center; line-height:1;
+           text-shadow: 3px 3px 0 #000, -1px -1px 0 #000; }
+  #nades small { display:block; font-size:13px; color:#fff; opacity:.8; letter-spacing:3px; }
+  #nades.empty { opacity:.45; }
+
+  /* overlays */
+  .overlay {
+    position: fixed; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center;
+    background: rgba(10,16,30,.72); color:#fff; -webkit-user-select:none; user-select:none;
+    cursor: pointer; z-index: 5;
+  }
+  .overlay.hidden { display:none; }
+  .title { font-size: 64px; font-weight:bold; letter-spacing:3px;
+           color:#ffd23f; text-shadow: 5px 5px 0 #d23f3f, 9px 9px 0 #000; margin-bottom:6px; }
+  .title.small { font-size:46px; }
+  .title .jb { color:#46e06a; }
+  .tag { font-size: 24px; font-weight:bold; letter-spacing:12px; color:#fff;
+         text-shadow:3px 3px 0 #000; margin: 2px 0 4px; padding-left:12px; }
+  .sub { font-size: 20px; margin: 6px 0; opacity:.95; }
+  .blink { animation: blink 1s steps(2,start) infinite; font-size:26px; margin-top:22px; color:#7CFC00; }
+  .pillbtn { display:inline-block; margin-top:12px; padding:8px 26px; border:3px solid #ff5bd0;
+             color:#ff5bd0; font-size:18px; font-weight:bold; letter-spacing:2px; border-radius:8px;
+             cursor:pointer; text-shadow:1px 1px 0 #000; }
+  .pillbtn:hover { filter: brightness(1.35); }
+  @keyframes blink { 50% { opacity: 0.25; } }
+  .stat { font-size: 28px; margin:4px 0; }
+  .stat b { color:#ffe14d; }
+  .keys { font-size:15px; opacity:.7; margin-top:18px; line-height:1.6; }
+  .keys b { color:#ffd23f; }
+
+  /* high-score board (shared by game-over + start screens) */
+  .hiscores-title { font-size:15px; letter-spacing:4px; color:#ff5bd0; opacity:.9;
+                    margin:14px 0 4px; text-shadow:2px 2px 0 #000; }
+  .hiscores { margin: 6px 0 2px; min-width: 320px; font-size: 19px; line-height: 1.45; }
+  .hiscores .row { display:flex; justify-content:space-between; gap:20px; padding:0 12px; }
+  .hiscores .row.head { color:#ff5bd0; font-size:13px; letter-spacing:2px; opacity:.85; margin-bottom:2px; }
+  .hiscores .row.you { color:#7CFC00; text-shadow:0 0 8px rgba(124,252,0,.5); }
+  .hiscores .row .rank { width:26px; text-align:right; opacity:.7; }
+  .hiscores .row .who  { flex:1; text-align:left; letter-spacing:4px; padding-left:16px; }
+  .hiscores .row .pts  { color:#ffe14d; min-width:70px; text-align:right; }
+  .hiscores .row.you .pts { color:#7CFC00; }
+  /* leaderboard source tabs (only shown when an API is configured) */
+  .board-tabs { display:flex; gap:8px; justify-content:center; margin-top:10px; }
+  .board-tabs span { font-size:12px; letter-spacing:2px; padding:4px 12px; cursor:pointer;
+                     border:2px solid rgba(255,91,208,.5); color:rgba(255,255,255,.6); border-radius:4px; }
+  .board-tabs span.on { color:#ff5bd0; border-color:#ff5bd0; }
+  .board-tabs.hidden { display:none; }
+  /* arcade initials entry */
+  #entry.hidden { display:none; }
+  #entry .slots { font-size:56px; font-weight:bold; letter-spacing:16px; color:#ffd23f;
+                  text-shadow:3px 3px 0 #000; padding-left:16px; }
+  #entry .slots .cur { color:#7CFC00; }
+  #entry .hint { font-size:14px; opacity:.7; margin-top:4px; letter-spacing:1px; }
+
+  /* boss-kill upgrade choice */
+  #choice { position: fixed; inset: 0; z-index: 6; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; background: rgba(10,16,30,.55); }
+  #choice.hidden { display: none; }
+  .choice-title { font-size: 30px; font-weight: bold; color: #ffd23f; letter-spacing: 2px;
+                  text-shadow: 3px 3px 0 #000; margin-bottom: 18px; }
+  #choice .cards { display: flex; gap: 18px; }
+  #choice .card { width: 190px; padding: 18px 14px 16px; background: rgba(16,24,44,.92);
+                  border: 3px solid #ff5bd0; border-radius: 10px; text-align: center;
+                  cursor: pointer; transition: transform .08s, border-color .08s; }
+  #choice .card:hover { transform: scale(1.06); border-color: #7CFC00; }
+  #choice .card em { display: block; font-style: normal; font-size: 13px; color: #7CFC00;
+                     margin-bottom: 8px; letter-spacing: 2px; }
+  #choice .card b { display: block; font-size: 20px; color: #ffe14d;
+                    text-shadow: 2px 2px 0 #000; margin-bottom: 8px; }
+  #choice .card span { font-size: 14px; color: #fff; opacity: .9; line-height: 1.4; }
+
+  /* achievements */
+  #achtoast { position: fixed; top: 16%; left: 50%; transform: translateX(-50%);
+              font-size: 22px; font-weight: bold; color: #ffd23f; text-shadow: 2px 2px 0 #000;
+              text-align: center; background: rgba(10,16,30,.85); border: 2px solid #ffd23f;
+              border-radius: 8px; padding: 10px 22px; opacity: 0; transition: opacity .3s;
+              pointer-events: none; z-index: 7; }
+  #achtoast.show { opacity: 1; }
+  #achtoast small { display: block; font-size: 13px; color: #fff; opacity: .85; }
+  .achrow { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;
+            max-width: 560px; margin-top: 14px; }
+  .achrow .ach { font-size: 11px; letter-spacing: 1px; padding: 4px 8px; border-radius: 4px;
+                 border: 2px solid rgba(255,255,255,.25); color: rgba(255,255,255,.4); }
+  .achrow .ach.got { color: #ffd23f; border-color: #ffd23f; text-shadow: 1px 1px 0 #000; }
+
+  /* ---------- touch controls ---------- */
+  #touchui.hidden { display: none; }
+  #joy { position: fixed; width: 124px; height: 124px; border-radius: 50%; display: none;
+         background: rgba(255,255,255,.08); border: 2px solid rgba(255,255,255,.35);
+         pointer-events: none; z-index: 4; }
+  #joy-nub { position: absolute; left: 50%; top: 50%; width: 54px; height: 54px;
+             border-radius: 50%; background: rgba(255,255,255,.45);
+             border: 2px solid rgba(0,0,0,.4); transform: translate(-50%,-50%); }
+  .tbtn { position: fixed; border-radius: 50%; color: #fff; font-weight: bold;
+          display: flex; align-items: center; justify-content: center;
+          text-shadow: 2px 2px 0 #000; z-index: 4; touch-action: none;
+          -webkit-user-select: none; user-select: none; }
+  .tbtn:active { filter: brightness(1.6); }
+  #btn-fire { right: 20px; bottom: 70px; bottom: calc(70px + env(safe-area-inset-bottom));
+              width: 88px; height: 88px; font-size: 20px;
+              background: rgba(255,80,80,.25); border: 2px solid rgba(255,120,120,.6); }
+  #btn-nade { right: 124px; bottom: 46px; bottom: calc(46px + env(safe-area-inset-bottom));
+              width: 58px; height: 58px; font-size: 13px;
+              background: rgba(155,211,74,.2); border: 2px solid rgba(155,211,74,.55); }
+  #btn-sprint { right: 108px; bottom: 152px; bottom: calc(152px + env(safe-area-inset-bottom));
+                width: 58px; height: 58px; font-size: 13px;
+                background: rgba(95,208,255,.2); border: 2px solid rgba(95,208,255,.55); }
+  #pausebtn { position: fixed; top: 12px; right: 12px; width: 44px; height: 44px;
+              border-radius: 10px; background: rgba(0,0,0,.35); border: 2px solid rgba(255,255,255,.4);
+              color: #fff; font-size: 16px; display: flex; align-items: center; justify-content: center;
+              z-index: 4; touch-action: none; -webkit-user-select: none; user-select: none; }
+
+  /* touch initials entry */
+  #entry { position: relative; }
+  #in-input { position: absolute; opacity: 0; width: 1px; height: 1px; border: 0; padding: 0; }
+  #in-save { display: inline-block; margin-top: 14px; padding: 10px 34px; border: 3px solid #7CFC00;
+             color: #7CFC00; font-size: 22px; font-weight: bold; letter-spacing: 3px;
+             border-radius: 8px; cursor: pointer; }
+  #in-save.hidden { display: none; }
+
+  /* touch-mode layout shuffle (body.touch is set by JS when touch is detected) */
+  .keys.touch-hint { display: none; }
+  body.touch .keys.desktop { display: none; }
+  body.touch .keys.touch-hint { display: block; }
+  body.touch #health { right: 68px; }
+  body.touch #hpbar { right: 68px; }
+  body.touch #lives { right: 68px; }
+  body.touch #radar { left: auto; right: 12px; bottom: auto; top: 104px; width: 92px; height: 92px; }
+  body.touch #nades { right: auto; left: calc(50% + 96px); }
+  body.touch #muteind { display: none; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="hud">
+  <div id="score" class="hud-block">0<small>BEST 0</small><small id="wave">WAVE 1</small><small id="remain">LEFT <b>0</b></small></div>
+  <div id="combo" class="hud-block hidden">
+    <span class="mult">x1</span>
+    <div class="bar"><i></i></div>
+  </div>
+  <div id="health" class="hud-block">100</div>
+  <div id="lives" class="hud-block">♥♥♥</div>
+</div>
+<div id="hpbar"><i></i></div>
+
+<div id="wavebanner"></div>
+<div id="typetoast"></div>
+<div id="achtoast"></div>
+
+<div id="choice" class="hidden">
+  <div class="choice-title">BOSS DOWN — PICK AN UPGRADE</div>
+  <div class="cards">
+    <div class="card"><em></em><b></b><span></span></div>
+    <div class="card"><em></em><b></b><span></span></div>
+    <div class="card"><em></em><b></b><span></span></div>
+  </div>
+</div>
+<div id="bossbar" class="hidden"><span id="boss-name">BOSS</span><div class="track"><i></i></div></div>
+
+<div id="cross"></div>
+<div id="sprint"><i></i></div>
+<div id="hitmark"><span class="a"></span><span class="b"></span><span class="c"></span><span class="d"></span></div>
+<div id="dmg"></div>
+<div id="lowhp"></div>
+<div id="invuln"></div>
+<div id="floaters"></div>
+<div id="muteind" class="hud-block">🔇 MUTED</div>
+
+<div id="touchui" class="hidden">
+  <div id="joy"><div id="joy-nub"></div></div>
+  <div id="btn-fire" class="tbtn">FIRE</div>
+  <div id="btn-nade" class="tbtn">NADE</div>
+  <div id="btn-sprint" class="tbtn">DASH</div>
+  <div id="pausebtn">&#10074;&#10074;</div>
+</div>
+
+<canvas id="radar" width="156" height="156"></canvas>
+<div id="ammo" class="hud-block"><span id="ammo-n">24</span><small id="ammo-label">AMMO</small></div>
+<div id="nades" class="hud-block empty"><span id="nade-n">0</span><small>NADES</small></div>
+
+<div id="start" class="overlay">
+  <div class="title" id="start-title"><span class="jb">j</span>BrainRot</div>
+  <div class="tag">SHOOTER</div>
+  <div class="sub" id="start-sub">Shoot the brainrot before it gets you.</div>
+  <div class="blink" id="start-blink">CLICK TO PLAY</div>
+  <div class="pillbtn" id="daily-btn">🧠 DAILY RUN <span id="daily-num"></span></div>
+  <div class="hiscores-title" id="start-board-title">TOP BRAINROTTERS</div>
+  <div class="board-tabs hidden" id="start-tabs"><span data-src="local" class="on">LOCAL</span><span data-src="world">WORLD</span><span data-src="daily">DAILY</span></div>
+  <div id="start-board" class="hiscores"></div>
+  <div class="keys desktop">
+    <b>WASD</b> move &nbsp; <b>MOUSE</b> look &nbsp; <b>LEFT-CLICK</b> shoot &nbsp; <b>SPACE</b> jump &nbsp; <b>R</b> reload &nbsp; <b>G</b> grenade &nbsp; <b>SHIFT</b> hold to sprint &nbsp; <b>CAPS</b> auto-run &nbsp; <b>M</b> mute &nbsp; <b>ESC</b> pause
+  </div>
+  <div class="keys touch-hint">
+    <b>LEFT SIDE</b> move &nbsp; <b>RIGHT SIDE</b> look &nbsp; <b>HOLD FIRE</b> shoot
+  </div>
+  <div class="achrow" id="start-ach"></div>
+</div>
+
+<div id="over" class="overlay hidden">
+  <div class="title small">GAME OVER</div>
+  <div class="stat">SCORE <b id="o-score">0</b> &nbsp;·&nbsp; WAVE <b id="o-wave">1</b> &nbsp;·&nbsp; COMBO <b id="o-combo">x1</b></div>
+  <div id="daily-result" class="sub" style="display:none; color:#ff5bd0"></div>
+  <div id="entry" class="hidden">
+    <div class="sub" style="color:#7CFC00">NEW HIGH SCORE!</div>
+    <div class="slots" id="in-slots"></div>
+    <input id="in-input" type="text" maxlength="3" autocomplete="off" autocapitalize="characters" spellcheck="false">
+    <div class="hint" id="entry-hint">TYPE A–Z &nbsp; BACKSPACE to fix &nbsp; ENTER to save</div>
+    <div id="in-save" class="hidden">SAVE</div>
+  </div>
+  <div class="board-tabs hidden" id="over-tabs"><span data-src="local" class="on">LOCAL</span><span data-src="world">WORLD</span><span data-src="daily">DAILY</span></div>
+  <div id="board" class="hiscores"></div>
+  <div class="achrow" id="over-ach"></div>
+  <div>
+    <div class="pillbtn" id="share-btn" style="display:none">📋 SHARE</div>
+    <div class="pillbtn" id="classic-btn" style="display:none">🎮 CLASSIC RUN</div>
+  </div>
+  <div class="blink" id="over-blink">CLICK TO RESTART</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+"use strict";
+(function () {
+
+// =====================================================================
+//  jBrainRot  —  single-file voxel meme FPS
+// =====================================================================
+
+// ---------- Three.js core ----------
+const canvas   = document.getElementById('game');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+renderer.setSize(window.innerWidth, window.innerHeight);
+
+// touch device? primary-coarse pointers (phones/tablets) get the touch UI up front;
+// hybrid laptops flip touchMode on their first real touch instead.
+const HAS_COARSE = window.matchMedia && matchMedia('(pointer: coarse)').matches;
+let touchMode = false;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);
+scene.fog = new THREE.Fog(0x87ceeb, 55, 120);
+
+const camera = new THREE.PerspectiveCamera(78, window.innerWidth/window.innerHeight, 0.05, 900);
+
+// A yaw object holds the camera so we separate yaw (body) from pitch (head).
+const yawObj   = new THREE.Object3D();
+const pitchObj = new THREE.Object3D();
+yawObj.add(pitchObj);
+pitchObj.add(camera);
+scene.add(yawObj);
+
+const EYE = 1.7;
+yawObj.position.set(0, EYE, 0);
+
+// ---------- Lights ----------
+scene.add(new THREE.AmbientLight(0xffffff, 0.78));
+const sun = new THREE.DirectionalLight(0xffffff, 0.7);
+sun.position.set(30, 60, 20);
+scene.add(sun);
+const sun2 = new THREE.DirectionalLight(0xfff0c0, 0.25);
+sun2.position.set(-30, 40, -25);
+scene.add(sun2);
+
+// ---------- Shared geometry / material helpers ----------
+const BOX = new THREE.BoxGeometry(1,1,1);
+const matCache = {};
+function mat(hex){
+  if(!matCache[hex]) matCache[hex] = new THREE.MeshLambertMaterial({ color: hex, flatShading:true });
+  return matCache[hex];
+}
+function cube(hex, sx, sy, sz, x, y, z){
+  const m = new THREE.Mesh(BOX, mat(hex));
+  m.scale.set(sx, sy, sz);
+  m.position.set(x, y, z);
+  return m;
+}
+
+// ---------- World / arena ----------
+const groundGroup = new THREE.Group();
+scene.add(groundGroup);
+
+// =====================================================================
+//  ARENA = THE LEVEL NUMBER
+//  Each wave's arena is literally shaped like its number in a compact
+//  block-style face: 3x5-cell digit bitmaps, one stroke = one corridor.
+//  Multi-digit waves (10+) get bridges along the top and bottom rows
+//  connecting the far ends of neighboring digits.
+// =====================================================================
+const CELL = 24;                       // world units per shape cell (corridor width)
+const DIGIT_COLS = 3, DIGIT_ROWS = 5;  // bitmap size per digit
+const DIGIT_GAP = 1;                   // empty columns between digits
+// Every digit is orthogonally connected and has cells in the top and bottom
+// rows (rows 0 and 4) so the far-end bridges always find an anchor.
+const DIGITS = {
+  '0': ['111','101','101','101','111'],
+  '1': ['010','010','010','010','010'],
+  '2': ['111','001','111','100','111'],
+  '3': ['111','001','111','001','111'],
+  '4': ['101','101','111','001','001'],
+  '5': ['111','100','111','001','111'],
+  '6': ['111','100','111','101','111'],
+  '7': ['111','001','001','001','001'],
+  '8': ['111','101','111','101','111'],
+  '9': ['111','101','111','001','111'],
+};
+
+let originX = 0, originZ = 0;// world position of the shape's top-left cell corner
+let cells = new Set();       // member cells as 'c,r' keys
+let cellList = [];           // [{c, r, x, z}] with world-space centers
+let spawnPos = {x:0, z:0};   // player entry point, at one far end of the number
+let exitPos  = {x:0, z:0};   // exit at the opposite far end
+
+function isMember(c, r){ return cells.has(c+','+r); }
+function cellOf(x, z){
+  return [Math.floor((x-originX)/CELL), Math.floor((z-originZ)/CELL)];
+}
+function outsideArena(x, z, margin=0){
+  const [c, r] = cellOf(x, z);
+  if(!isMember(c, r)) return true;
+  if(margin>0){
+    const lx = x-(originX+c*CELL), lz = z-(originZ+r*CELL);
+    if(lx<margin      && !isMember(c-1,r)) return true;
+    if(lx>CELL-margin && !isMember(c+1,r)) return true;
+    if(lz<margin      && !isMember(c,r-1)) return true;
+    if(lz>CELL-margin && !isMember(c,r+1)) return true;
+  }
+  return false;
+}
+// Keep a position inside the number's strokes: pull it into the nearest member
+// cell if it escaped, then inset it from any side that faces a void.
+function clampToArena(pos, margin){
+  let [c, r] = cellOf(pos.x, pos.z);
+  if(!isMember(c, r)){
+    let best=null, bd=Infinity;
+    for(const cl of cellList){
+      const d = (cl.x-pos.x)*(cl.x-pos.x) + (cl.z-pos.z)*(cl.z-pos.z);
+      if(d<bd){ bd=d; best=cl; }
+    }
+    c=best.c; r=best.r;
+    pos.x = Math.max(originX+c*CELL, Math.min(originX+(c+1)*CELL, pos.x));
+    pos.z = Math.max(originZ+r*CELL, Math.min(originZ+(r+1)*CELL, pos.z));
+  }
+  const x0 = originX+c*CELL, z0 = originZ+r*CELL;
+  if(!isMember(c-1,r)) pos.x = Math.max(pos.x, x0+margin);
+  if(!isMember(c+1,r)) pos.x = Math.min(pos.x, x0+CELL-margin);
+  if(!isMember(c,r-1)) pos.z = Math.max(pos.z, z0+margin);
+  if(!isMember(c,r+1)) pos.z = Math.min(pos.z, z0+CELL-margin);
+}
+// flyers ignore the strokes and glide over voids, but stay over the number's
+// overall footprint so they can't drift off into the sky forever
+let boundsW = 0, boundsH = 0;
+function clampToBounds(pos, margin){
+  pos.x = Math.max(originX+margin, Math.min(originX+boundsW-margin, pos.x));
+  pos.z = Math.max(originZ+margin, Math.min(originZ+boundsH-margin, pos.z));
+}
+
+// lay out the digits of `n` and bridge neighboring digits along rows 0 and 4
+function buildShapeCells(n){
+  const str = String(n);
+  const grid = new Set();
+  const digitCols = [];
+  let colOff = 0;
+  for(const ch of str){
+    const bmp = DIGITS[ch];
+    for(let r=0; r<DIGIT_ROWS; r++)
+      for(let c=0; c<DIGIT_COLS; c++)
+        if(bmp[r][c]==='1') grid.add((colOff+c)+','+r);
+    digitCols.push(colOff);
+    colOff += DIGIT_COLS + DIGIT_GAP;
+  }
+  for(let d=0; d+1<str.length; d++){
+    for(const r of [0, DIGIT_ROWS-1]){   // far-end bridges: top row + bottom row
+      let from=-1, to=-1;
+      for(let c=digitCols[d]; c<digitCols[d]+DIGIT_COLS; c++) if(grid.has(c+','+r)) from=c;
+      for(let c=digitCols[d+1]+DIGIT_COLS-1; c>=digitCols[d+1]; c--) if(grid.has(c+','+r)) to=c;
+      for(let c=from+1; c<to; c++) grid.add(c+','+r);
+    }
+  }
+  return { grid, totalCols: colOff - DIGIT_GAP };
+}
+
+let groundInst = null;
+
+// Build ground from grass cubes using a single InstancedMesh for performance.
+function buildGround(){
+  if(groundInst){
+    groundGroup.remove(groundInst);
+    groundInst.material.dispose();
+    if(groundInst.dispose) groundInst.dispose();   // r129+ only; BOX geometry is shared either way
+  }
+  const grass = [0x5fa83c, 0x6cb83f, 0x569a36, 0x65b23d];
+  const inst = new THREE.InstancedMesh(BOX, new THREE.MeshLambertMaterial({vertexColors:true, flatShading:true}), cellList.length*CELL*CELL);
+  const m4 = new THREE.Matrix4();
+  const col = new THREE.Color();
+  let i=0;
+  for(const cl of cellList){
+    for(let tx=0; tx<CELL; tx++){
+      for(let tz=0; tz<CELL; tz++){
+        const x = originX + cl.c*CELL + tx + 0.5;
+        const z = originZ + cl.r*CELL + tz + 0.5;
+        m4.makeScale(1.0, 1, 1.0);
+        m4.setPosition(x, -0.5, z);
+        inst.setMatrixAt(i, m4);
+        col.setHex(grass[(cl.c*CELL+tx + cl.r*CELL+tz)%grass.length]);
+        inst.setColorAt(i, col);
+        i++;
+      }
+    }
+  }
+  inst.instanceMatrix.needsUpdate = true;
+  if(inst.instanceColor) inst.instanceColor.needsUpdate = true;
+  groundGroup.add(inst);
+  groundInst = inst;
+}
+
+// Scattered cover clusters (dirt/stone) — also collidable obstacles.
+// About one cluster per cell, jittered off-center so the wide corridors
+// stay passable on both sides.
+const obstacles = []; // {x,z,r}
+const coverGroup = new THREE.Group();
+groundGroup.add(coverGroup);
+function buildCover(rng){
+  while(coverGroup.children.length) coverGroup.remove(coverGroup.children[coverGroup.children.length-1]);
+  obstacles.length = 0;
+  const dirt=[0x8a5a2b,0x7a4d22], stone=[0x9a9a9a,0x808080,0xb0b0b0];
+  const target = Math.max(4, cellList.length);
+  const used = new Set();
+  for(let tries=0; tries<target*4 && obstacles.length<target; tries++){
+    const cl = cellList[Math.floor(rng()*cellList.length)];
+    const key = cl.c+','+cl.r;
+    if(used.has(key)) continue;
+    if(Math.hypot(cl.x-spawnPos.x, cl.z-spawnPos.z) < CELL*0.8) continue;   // keep the spawn clear
+    if(Math.hypot(cl.x-exitPos.x,  cl.z-exitPos.z)  < CELL*0.8) continue;   // and the exit
+    used.add(key);
+    const cx = Math.round(cl.x + (rng()*2-1)*CELL*0.22), cz = Math.round(cl.z + (rng()*2-1)*CELL*0.22);
+    const w = 2+Math.floor(rng()*3);
+    const tall = 4+Math.floor(rng()*2);   // stacks land 3-5 high — real sightline-blocking cover
+    const pal = rng()<0.5?dirt:stone;
+    for(let bx=0; bx<w; bx++){
+      for(let bz=0; bz<w; bz++){
+        const stackH = tall - ((bx+bz)%2);
+        for(let by=0; by<stackH; by++){
+          const x=cx+bx-(w/2|0), z=cz+bz-(w/2|0);
+          const c = pal[(bx+bz+by)%pal.length];
+          coverGroup.add(cube(c, 1, 1, 1, x, by+0.5, z));
+        }
+      }
+    }
+    obstacles.push({ x:cx, z:cz, r:Math.max(1.4, w*0.65) });
+  }
+}
+
+// boundary marker blocks (visual fence) — posts line every stroke edge that faces a void
+const fenceGroup = new THREE.Group();
+groundGroup.add(fenceGroup);
+function buildFence(){
+  while(fenceGroup.children.length) fenceGroup.remove(fenceGroup.children[fenceGroup.children.length-1]);
+  for(const cl of cellList){
+    const x0 = originX+cl.c*CELL, z0 = originZ+cl.r*CELL;
+    for(let i=1; i<CELL; i+=2){
+      if(!isMember(cl.c, cl.r-1)) fenceGroup.add(cube(0x555a66,1,2,1, x0+i, 1, z0+0.5));
+      if(!isMember(cl.c, cl.r+1)) fenceGroup.add(cube(0x555a66,1,2,1, x0+i, 1, z0+CELL-0.5));
+      if(!isMember(cl.c-1, cl.r)) fenceGroup.add(cube(0x555a66,1,2,1, x0+0.5, 1, z0+i));
+      if(!isMember(cl.c+1, cl.r)) fenceGroup.add(cube(0x555a66,1,2,1, x0+CELL-0.5, 1, z0+i));
+    }
+  }
+}
+
+// BFS distances from the spawn cell — the progress meter for trigger lines.
+// Any walk from spawn to exit steps through every distance value on the way,
+// so triggers keyed to fractions of the exit's distance can never be skipped.
+let distFromSpawn = {};   // 'c,r' -> steps from the spawn cell
+let exitDistSteps = 1;    // the exit cell's distance (progress denominator)
+function rebuildDistances(){
+  distFromSpawn = {};
+  const [sc, sr] = cellOf(spawnPos.x, spawnPos.z);
+  distFromSpawn[sc+','+sr] = 0;
+  const q = [[sc, sr]];
+  while(q.length){
+    const [c, r] = q.shift();
+    const d = distFromSpawn[c+','+r];
+    for(const [dc, dr] of [[1,0],[-1,0],[0,1],[0,-1]]){
+      const k = (c+dc)+','+(r+dr);
+      if(isMember(c+dc, r+dr) && distFromSpawn[k]===undefined){
+        distFromSpawn[k] = d+1;
+        q.push([c+dc, r+dr]);
+      }
+    }
+  }
+  const [xc, xr] = cellOf(exitPos.x, exitPos.z);
+  exitDistSteps = Math.max(1, distFromSpawn[xc+','+xr] || 1);
+}
+// how far along spawn->exit the player currently is (0..1, can exceed 1 in dead ends)
+function playerProgress(){
+  const [c, r] = cellOf(yawObj.position.x, yawObj.position.z);
+  const d = distFromSpawn[c+','+r];
+  return (d===undefined ? 0 : d) / exitDistSteps;
+}
+
+// BFS flow field from the player's cell — enemies follow it through the
+// number's corridors instead of face-planting into concave stroke walls.
+let flowNext = {};     // 'c,r' -> world center of the next cell toward the player
+let flowTimer = 0;
+function rebuildFlow(){
+  flowNext = {};
+  const [pc, pr] = cellOf(yawObj.position.x, yawObj.position.z);
+  if(!isMember(pc, pr)) return;
+  const q = [[pc, pr]];
+  const seen = new Set([pc+','+pr]);
+  while(q.length){
+    const [c, r] = q.shift();
+    const here = {x: originX+(c+0.5)*CELL, z: originZ+(r+0.5)*CELL};
+    for(const [dc, dr] of [[1,0],[-1,0],[0,1],[0,-1]]){
+      const nc=c+dc, nr=r+dr, k=nc+','+nr;
+      if(!isMember(nc, nr) || seen.has(k)) continue;
+      seen.add(k);
+      flowNext[k] = here;
+      q.push([nc, nr]);
+    }
+  }
+}
+
+// The exit is a stone doorway with a glowing portal sheet — gray while the
+// wave is live (locked), pulsing green once every enemy is dead. A tall
+// column of white arrows rises above it, rendered fog-free so the beacon
+// reads from the far end of any arena.
+const exitGroup = new THREE.Group();
+const portalGlowMat = new THREE.MeshBasicMaterial({color:0x8a939b, transparent:true, opacity:0.25, fog:false, side:THREE.DoubleSide});
+const exitArrowMat  = new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0.45, fog:false});
+const exitArrows = [];
+const ARROW_BASE = 10, ARROW_STEP = 6;
+(function buildExitPortal(){
+  const frame = mat(0x555a66);
+  for(const sx of [-2.4, 2.4]){
+    const pillar = new THREE.Mesh(BOX, frame);
+    pillar.scale.set(1.2, 6, 1.2);
+    pillar.position.set(sx, 3, 0);
+    exitGroup.add(pillar);
+  }
+  const lintel = new THREE.Mesh(BOX, frame);
+  lintel.scale.set(6.2, 1.2, 1.2);
+  lintel.position.set(0, 6.4, 0);
+  exitGroup.add(lintel);
+  const glow = new THREE.Mesh(BOX, portalGlowMat);
+  glow.scale.set(3.6, 5.8, 0.3);
+  glow.position.set(0, 3, 0);
+  exitGroup.add(glow);
+  // the beacon: six white arrows stacked into the sky, cascading downward
+  for(let i=0; i<6; i++){
+    const a = new THREE.Group();
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(1.5, 2.2, 4), exitArrowMat);
+    tip.rotation.x = Math.PI;   // point down at the door
+    const shaft = new THREE.Mesh(BOX, exitArrowMat);
+    shaft.scale.set(0.9, 1.6, 0.9);
+    shaft.position.y = 1.9;
+    a.add(tip);
+    a.add(shaft);
+    a.position.y = ARROW_BASE + i*ARROW_STEP;
+    exitGroup.add(a);
+    exitArrows.push(a);
+  }
+  scene.add(exitGroup);
+})();
+let exitBob = 0;
+
+// Rebuild the whole arena as the wave's number: lay out the digit cells,
+// center them on the world origin, then pick the two member cells farthest
+// apart as the spawn/exit pair (the number's true far ends).
+function rebuildArena(waveNum){
+  const rng = seededRng('jbr-arena-'+G.arenaSeed+'-'+waveNum);
+  const { grid, totalCols } = buildShapeCells(waveNum);
+  boundsW = totalCols*CELL;
+  boundsH = DIGIT_ROWS*CELL;
+  originX = -boundsW/2;
+  originZ = -boundsH/2;
+  cells = grid;
+  cellList.length = 0;
+  for(const key of grid){
+    const [c, r] = key.split(',').map(Number);
+    cellList.push({ c, r, x: originX+(c+0.5)*CELL, z: originZ+(r+0.5)*CELL });
+  }
+  let bd = -1;
+  for(const a of cellList){
+    for(const b of cellList){
+      const d = (a.x-b.x)*(a.x-b.x) + (a.z-b.z)*(a.z-b.z);
+      if(d>bd){ bd=d; spawnPos={x:a.x, z:a.z}; exitPos={x:b.x, z:b.z}; }
+    }
+  }
+  // spawn on the left end so reading order matches travel direction
+  if(spawnPos.x > exitPos.x){ const t=spawnPos; spawnPos=exitPos; exitPos=t; }
+  buildGround();
+  buildFence();
+  buildCover(rng);
+  // plant the doorway at the exit, facing back down the level toward the spawn
+  exitGroup.position.set(exitPos.x, 0, exitPos.z);
+  exitGroup.rotation.y = Math.atan2(spawnPos.x-exitPos.x, spawnPos.z-exitPos.z);
+  // push the fog out to match the level's size so the far end stays readable
+  const diag = Math.hypot(boundsW, boundsH);
+  scene.fog.near = Math.max(55, diag*0.55);
+  scene.fog.far  = Math.max(120, diag*1.25);
+  rebuildDistances();
+  rebuildFlow();
+}
+
+// =====================================================================
+//  AUDIO  (WebAudio, all wrapped in try/catch)
+// =====================================================================
+let AC = null;
+function audioInit(){ try{ if(!AC) AC = new (window.AudioContext||window.webkitAudioContext)(); if(AC.state==='suspended') AC.resume(); }catch(e){} }
+function tone(freq, dur, type, vol, slideTo){
+  try{
+    if(!AC || G.muted) return;
+    const t = AC.currentTime;
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.type = type||'square';
+    o.frequency.setValueAtTime(freq, t);
+    if(slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(1,slideTo), t+dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol||0.18, t+0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    o.connect(g); g.connect(AC.destination);
+    o.start(t); o.stop(t+dur+0.02);
+  }catch(e){}
+}
+function noiseBurst(dur, vol){
+  try{
+    if(!AC || G.muted) return;
+    const n = Math.floor(AC.sampleRate*dur);
+    const buf = AC.createBuffer(1, n, AC.sampleRate);
+    const d = buf.getChannelData(0);
+    for(let i=0;i<n;i++) d[i] = (Math.random()*2-1)*Math.pow(1-i/n, 2);
+    const src = AC.createBufferSource(); src.buffer = buf;
+    const g = AC.createGain(); g.gain.value = vol||0.2;
+    src.connect(g); g.connect(AC.destination); src.start();
+  }catch(e){}
+}
+const SFX = {
+  shoot(){ tone(720, 0.07, 'square', 0.12, 180); noiseBurst(0.04, 0.06); },
+  hit(){ tone(420, 0.05, 'square', 0.10, 260); },
+  kill(){ tone(180, 0.16, 'sawtooth', 0.20, 70); noiseBurst(0.1,0.12); tone(330,0.12,'square',0.10,120); },
+  head(){ tone(1320, 0.10, 'square', 0.16, 760); tone(1760,0.08,'sine',0.10,1200); },
+  hurt(){ tone(150, 0.18, 'sawtooth', 0.22, 60); noiseBurst(0.12,0.15); },
+  over(){ tone(300,0.5,'sawtooth',0.22,60); tone(150,0.7,'square',0.16,40); },
+  combo(n){ tone(500+n*60, 0.07, 'square', 0.12, 700+n*60); },
+  crit(){ tone(1560,0.09,'square',0.16,2200); tone(2080,0.12,'sine',0.10,2600); },
+  talk(){ // Animal-Crossing-style gibberish blips
+    for(let i=0;i<4;i++) setTimeout(()=>tone(340+Math.random()*280, 0.05, 'square', 0.10, 500+Math.random()*300), i*70);
+  }
+};
+
+// =====================================================================
+//  PLAYER STATE
+// =====================================================================
+const player = {
+  vel: new THREE.Vector3(),
+  speed: 6.4,
+  sprintMul: 1.8,
+  jumpH: 0,           // height above the ground plane while jumping
+  jumpVy: 0,          // vertical jump velocity
+  hp: 100,
+  ammo: 24,
+  maxAmmo: 24,
+  reloading: 0,       // remaining reload time
+  grenades: 0,        // thrown with right-click; picked up in packs of 3
+  shotgun: false,     // unlocked after the first boss kill — fires a hard-hitting pellet spread
+  dblshotgun: false,  // unlocked at the wave-10 boss — both barrels, twice the lead
+  lives: 3,           // extra lives — start with 3, +1 for each boss battle won
+  invuln: 0,          // seconds of post-revive invulnerability remaining
+  alive: true,
+};
+const START_LIVES = 3;
+const REVIVE_INVULN = 2.2;   // shielded window after spending a life
+const RELOAD_TIME = 1.05;
+
+// run-scoped roguelite mutators — reset every run, stacked via boss-kill choices
+function freshMods(){
+  return { vampire:0, ricochet:false, burn:false, magMul:1, reloadMul:1,
+           sprintPlus:0, nadeRMul:1, critBonus:0, picks:{} };
+}
+let mods = freshMods();
+// shotgun: a fan of pellets per trigger-pull, each pellet a full hitscan hit
+const SHOTGUN_PELLETS = 9;
+const SHOTGUN_SPREAD  = 0.055;  // NDC jitter per pellet — tight enough to shred a boss up close
+// double-shotgun (wave-10 boss upgrade): both barrels at once — more lead, a wider wall of it
+const DBLSHOTGUN_PELLETS = 16;
+const DBLSHOTGUN_SPREAD  = 0.078;
+const MOUSE_SENS = 0.0022;
+const TOUCH_SENS = 0.0045;   // look-drag needs a heavier hand than mouse deltas
+const keys = {};
+let yaw = 0, pitch = 0;
+const PITCH_CLAMP = Math.PI/2 - 0.08;
+
+// =====================================================================
+//  WEAPON VIEWMODEL
+// =====================================================================
+const gun = new THREE.Group();
+// two swappable models live under `gun`; only one is visible at a time
+const pistolModel  = new THREE.Group();
+const shotgunModel = new THREE.Group();
+const dblShotgunModel = new THREE.Group();
+(function buildGun(){
+  // ---- pistol (starting weapon) ----
+  pistolModel.add(cube(0x222226, 0.16, 0.16, 0.55, 0, 0, -0.28));   // body
+  pistolModel.add(cube(0x111114, 0.10, 0.10, 0.42, 0, 0.02, -0.55)); // barrel
+  pistolModel.add(cube(0x333339, 0.14, 0.22, 0.14, 0, -0.13, -0.05)); // grip
+  pistolModel.add(cube(0xff5533, 0.06, 0.06, 0.06, 0, 0.05, -0.78));  // muzzle tip
+
+  // ---- shotgun (post-boss upgrade): chunkier, twin-barrel, wood furniture ----
+  shotgunModel.add(cube(0x2a2a30, 0.24, 0.20, 0.50, 0,  0.00, -0.22));  // receiver
+  shotgunModel.add(cube(0x14141a, 0.22, 0.11, 0.66, 0,  0.05, -0.60));  // wide twin barrel
+  shotgunModel.add(cube(0x000000, 0.02, 0.11, 0.66, 0,  0.05, -0.605)); // barrel seam
+  shotgunModel.add(cube(0x5a3a1a, 0.18, 0.11, 0.26, 0, -0.07, -0.52));  // wood pump/forestock
+  shotgunModel.add(cube(0x4a2f16, 0.14, 0.22, 0.15, 0, -0.15, -0.02));  // grip
+  shotgunModel.add(cube(0x4a2f16, 0.12, 0.16, 0.24, 0, -0.05,  0.18));  // wood stock
+  shotgunModel.add(cube(0x555560, 0.05, 0.05, 0.05,-0.055,0.05,-0.92));  // muzzle L
+  shotgunModel.add(cube(0x555560, 0.05, 0.05, 0.05, 0.055,0.05,-0.92));  // muzzle R
+  shotgunModel.visible = false;
+
+  // ---- double-shotgun (wave-10 boss upgrade): beefier receiver, stacked over/under barrels ----
+  dblShotgunModel.add(cube(0x2a2a30, 0.28, 0.24, 0.52, 0,  0.00, -0.22));  // fat receiver
+  dblShotgunModel.add(cube(0x14141a, 0.26, 0.12, 0.72, 0,  0.10, -0.62));  // upper barrel
+  dblShotgunModel.add(cube(0x14141a, 0.26, 0.12, 0.72, 0, -0.02, -0.62));  // lower barrel
+  dblShotgunModel.add(cube(0x000000, 0.26, 0.02, 0.72, 0,  0.04, -0.625)); // barrel gap
+  dblShotgunModel.add(cube(0x6a4520, 0.20, 0.13, 0.28, 0, -0.10, -0.52));  // wood pump/forestock
+  dblShotgunModel.add(cube(0x4a2f16, 0.15, 0.24, 0.16, 0, -0.17, -0.02));  // grip
+  dblShotgunModel.add(cube(0x4a2f16, 0.13, 0.18, 0.26, 0, -0.06,  0.20));  // wood stock
+  dblShotgunModel.add(cube(0xcaa64a, 0.04, 0.05, 0.05, 0,  0.04, -0.30));  // brass hinge accent
+  dblShotgunModel.add(cube(0x666672, 0.06, 0.06, 0.06,-0.06, 0.10,-1.00));  // muzzle upper-L
+  dblShotgunModel.add(cube(0x666672, 0.06, 0.06, 0.06, 0.06, 0.10,-1.00));  // muzzle upper-R
+  dblShotgunModel.add(cube(0x666672, 0.06, 0.06, 0.06,-0.06,-0.02,-1.00));  // muzzle lower-L
+  dblShotgunModel.add(cube(0x666672, 0.06, 0.06, 0.06, 0.06,-0.02,-1.00));  // muzzle lower-R
+  dblShotgunModel.visible = false;
+
+  gun.add(pistolModel);
+  gun.add(shotgunModel);
+  gun.add(dblShotgunModel);
+  gun.position.set(0.32, -0.30, -0.6);
+  camera.add(gun);
+})();
+// (camera is already in the scene graph via pitchObj; do NOT re-parent it)
+
+// show the on-screen weapon that matches the player's current tier
+function setWeaponModel(){
+  const dbl = !!player.dblshotgun;
+  const sg  = !dbl && !!player.shotgun;
+  pistolModel.visible     = !dbl && !sg;
+  shotgunModel.visible    = sg;
+  dblShotgunModel.visible = dbl;
+  // muzzle flash sits at the barrel mouth; the double barrel reaches a touch farther
+  muzzle.position.set(0, dbl?0.04:0.05, dbl ? -1.04 : sg ? -0.96 : -0.85);
+}
+
+// muzzle flash sprite
+const flashMat = new THREE.SpriteMaterial({ color:0xffee66, transparent:true, opacity:0, depthTest:false });
+const muzzle = new THREE.Sprite(flashMat);
+muzzle.scale.set(0.5,0.5,0.5);
+muzzle.position.set(0, 0.05, -0.85);
+gun.add(muzzle);
+
+// =====================================================================
+//  ENEMIES
+// =====================================================================
+// Parody-of-the-parody: recognizably similar to the brainrot originals, but our own.
+const NAMES = ["Skibbidy Potty","Tongue Tongue Surfer","Tralaloo Lalalero",
+  "Bombardino Crocodingo","Ballerino Cappuccino","Chimpanzoodle Bananano","Lurilly Lorilla"];
+const BODY_COLORS = [0xff5e5e,0x5ec8ff,0xffd24d,0x9b5eff,0x5eff8a,0xff8a3d,0xff5ed1,0x3dffd2];
+// big bad parody-of-the-parody bosses
+const BOSS_NAMES = ["Gigachadini Supremo","Bombardiro Apocalypto","Skibbidor the Devourer",
+  "Tralalord Annihilato","Chimpanzilla Rexxo"];
+
+const enemies = [];
+let nameIdx = 0;
+
+// enemy type table — every type is a delta on the same cube-humanoid kit
+const ETYPES = {
+  minion:   { speedMul:1.0,  score:100, radius:0.6 },
+  spitter:  { speedMul:0.85, score:130, radius:0.6 },   // holds range, lobs goo
+  kamikaze: { speedMul:1.8,  score:140, radius:0.5 },   // fast, fragile, explodes on you
+  brute:    { speedMul:0.5,  score:220, radius:1.0 },   // slow tank with a mini-boss swing
+  flyer:    { speedMul:1.05, score:160, radius:0.6 },   // airborne, immune to ground blasts
+  boss:     { speedMul:1.0,  score:0,   radius:1.4 },
+};
+
+// pure: the same (wave, roll) always yields the same type — the daily seed relies on this
+function rollEnemyType(wave, r){
+  let p = 0;
+  if(wave>=8){ p += 0.15; if(r < p) return 'flyer'; }
+  if(wave>=6){ p += 0.10; if(r < p) return 'brute'; }
+  if(wave>=4){ p += 0.15; if(r < p) return 'kamikaze'; }
+  if(wave>=3){ p += 0.20; if(r < p) return 'spitter'; }
+  return 'minion';
+}
+
+// one-time callout the first time each type shows up (per page load)
+const TYPE_CALLOUTS = {
+  spitter:  'SPITS AT RANGE — STRAFE!',
+  kamikaze: 'RUNS AT YOU AND EXPLODES',
+  brute:    'BIG. SLOW. HITS LIKE A BUS.',
+  flyer:    "AIRBORNE — GROUND NADES CAN'T REACH",
+};
+const seenTypes = {};
+function announceType(type){
+  if(!TYPE_CALLOUTS[type] || seenTypes[type]) return;
+  seenTypes[type] = true;
+  elTypeToast.innerHTML = 'NEW BRAINROT DETECTED<small>'+TYPE_CALLOUTS[type]+'</small>';
+  elTypeToast.classList.add('show');
+  clearTimeout(announceType._t);
+  announceType._t = setTimeout(()=>elTypeToast.classList.remove('show'), 2400);
+}
+
+// label sprite cache by name
+const labelCache = {};
+function makeLabel(text){
+  if(labelCache[text]) return labelCache[text].clone();
+  const cv = document.createElement('canvas');
+  cv.width = 256; cv.height = 64;
+  const ctx = cv.getContext('2d');
+  ctx.font = 'bold 30px "Courier New", monospace';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  // shrink font to fit
+  let fs=30;
+  while(ctx.measureText(text).width > 244 && fs>12){ fs-=2; ctx.font='bold '+fs+'px "Courier New", monospace'; }
+  ctx.lineWidth = 6; ctx.strokeStyle='#000';
+  ctx.strokeText(text, 128, 34);
+  ctx.fillStyle = '#fff';
+  ctx.fillText(text, 128, 34);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.minFilter = THREE.LinearFilter;
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map:tex, transparent:true, depthTest:false }));
+  spr.scale.set(3.2, 0.8, 1);
+  labelCache[text] = spr;
+  return spr.clone();
+}
+
+function makeEnemy(opts){
+  const boss = !!(opts && opts.boss);
+  const type = boss ? 'boss' : ((opts && opts.type) || 'minion');
+  const T = ETYPES[type];
+  const g = new THREE.Group();
+  // bosses get a menacing fixed palette; specials wear a uniform so the threat
+  // reads at a glance; minions stay random + goofy
+  let col, col2;
+  if(boss){                   col = 0x8a1020; col2 = 0x12060a; }
+  else if(type==='spitter'){  col = 0x6fc832; col2 = 0x3f8f1f; }
+  else if(type==='kamikaze'){ col = 0xe23b3b; col2 = 0x7a1010; }
+  else if(type==='brute'){    col = 0x8a8f98; col2 = 0x5a5f68; }
+  else {
+    col  = BODY_COLORS[(rngSpawn()*BODY_COLORS.length)|0];
+    col2 = BODY_COLORS[(rngSpawn()*BODY_COLORS.length)|0];
+  }
+
+  // body parts (slightly asymmetric on purpose)
+  const torso = cube(col, 0.9, 1.1, 0.6, 0, 1.15, 0);
+  const head  = cube(col2, 0.7, 0.7, 0.7, (Math.random()-0.5)*0.12, 2.05, 0);
+  const armL  = cube(col, 0.26, 0.85, 0.26, -0.62, 1.2, 0.02);
+  const armR  = cube(col, 0.24, 0.85, 0.24,  0.62, 1.15, -0.02);
+  // goofy eyes (bosses + kamikazes get angry red ones)
+  const eyeCol = (boss || type==='kamikaze') ? 0xff2a2a : 0x000000;
+  const eyeL = cube(eyeCol, 0.12,0.12,0.06, -0.16, 2.12, 0.36);
+  const eyeR = cube(eyeCol, 0.14,0.14,0.06,  0.18, 2.10, 0.36);
+  g.add(torso, head, armL, armR, eyeL, eyeR);
+
+  // flyers trade legs for flappy wings; everyone else waddles
+  let legL=null, legR=null, wingL=null, wingR=null;
+  if(type==='flyer'){
+    wingL = cube(col2, 1.1, 0.08, 0.44, -1.0, 1.55, 0);
+    wingR = cube(col2, 1.1, 0.08, 0.44,  1.0, 1.55, 0);
+    g.add(wingL, wingR);
+  } else {
+    legL = cube(0x333344, 0.32, 0.9, 0.32, -0.26, 0.45, 0);
+    legR = cube(0x333344, 0.30, 0.9, 0.30,  0.27, 0.45, 0);
+    g.add(legL, legR);
+  }
+  // spitters get a big dumb goo-mouth so the ranged threat reads instantly
+  if(type==='spitter') g.add(cube(0x9dff2e, 0.34, 0.18, 0.10, 0, 1.94, 0.38));
+
+  if(boss){
+    // a tacky gold crown so it reads as The Boss at a glance
+    g.add(cube(0xffd24d, 0.82, 0.18, 0.82, 0, 2.5, 0));
+    g.add(cube(0xffd24d, 0.16, 0.22, 0.16, -0.26, 2.66, 0));
+    g.add(cube(0xffd24d, 0.16, 0.22, 0.16,  0.26, 2.66, 0));
+    g.add(cube(0xffd24d, 0.16, 0.26, 0.16,  0.0,  2.70, 0));
+  }
+
+  const name = boss ? BOSS_NAMES[(nameIdx) % BOSS_NAMES.length]
+                    : NAMES[nameIdx % NAMES.length];
+  nameIdx++;
+  const label = makeLabel(name);
+  label.position.set(0, 2.9, 0);
+  g.add(label);
+
+  // spawn in a random shape cell — one seeded roll, then deterministic steps
+  // along the cell list (keeps daily rng streams in sync). Prefer cells at or
+  // AHEAD of the player's progress so packs never force backtracking, and
+  // never land on top of the player.
+  const pp = yawObj.position;
+  const [ppc, ppr] = cellOf(pp.x, pp.z);
+  const pSteps = distFromSpawn[ppc+','+ppr] || 0;
+  const idx = Math.floor(rngSpawn()*cellList.length);
+  let pick=null, fallback=null;
+  for(let t=0; t<cellList.length; t++){
+    const cl = cellList[(idx+t)%cellList.length];
+    if(Math.hypot(cl.x-pp.x, cl.z-pp.z) <= 14) continue;               // never on top of the player
+    if(!fallback) fallback = cl;
+    if((distFromSpawn[cl.c+','+cl.r] || 0) < pSteps) continue;          // behind the player — skip
+    pick = cl; break;
+  }
+  const cl = pick || fallback || cellList[idx];
+  g.position.set(cl.x, 0, cl.z);
+
+  const gs = boss ? 2.3 : type==='brute' ? 1.6 : type==='kamikaze' ? 0.8 : 1;
+  g.scale.setScalar(gs*0.05);             // materializes up to full size in the enemy loop
+  label.scale.set(3.2/gs, 0.8/gs, 1);     // keep the name readable after group scaling
+  // beam-in flash so the arrival reads before the body finishes forming
+  burst(cl.x, 1.0, cl.z, col, 10, 2);
+
+  scene.add(g);
+
+  const hp = boss ? Math.round(18 + G.wave*1.6)
+           : type==='brute'    ? Math.round(7 + G.wave*0.3)
+           : type==='kamikaze' ? 1
+           : 2 + (rngSpawn()<0.3?1:0);
+  const parts = [torso,head,armL,armR,eyeL,eyeR];
+  if(legL) parts.push(legL, legR);
+  if(wingL) parts.push(wingL, wingR);
+  const e = {
+    group: g,
+    head, torso, legL, legR, armL, armR, eyeL, eyeR, wingL, wingR,
+    headParts:[head,eyeL,eyeR],
+    parts,
+    hp, maxHp:hp,
+    speed: 0,
+    bob: Math.random()*Math.PI*2,
+    lunge: 0,
+    stagger: 0,
+    stun: 0,                 // headshot stun — frozen in place while it lasts
+    kb: 0, kbX: 0, kbZ: 0,   // body-shot knockback impulse (speed + direction)
+    flail: 0,                // limb-flail phase while being knocked back
+    burn: 0,                 // RATIO'D damage-over-time remaining
+    spawning: 0.9,           // materialize-in countdown — untouchable until it hits 0
+    baseScale: gs,
+    color: col,
+    color2: col2,
+    name,
+    label,
+    alive:true,
+    hitFlash:0,
+    radius: T.radius,
+    attackCd:0,
+    boss,
+    type,
+    // loot pre-rolled at spawn time so the daily seed isn't skewed by kill order
+    drop: boss ? 'health' : (rngSpawn() < 1/2 ? 'health' : 'ammo'),
+    nadeDrop: boss ? true : rngSpawn() < 0.25,
+  };
+  enemies.push(e);
+  return e;
+}
+
+// =====================================================================
+//  BOSS SPEECH BUBBLES  (one-off canvas sprites; lines vary so no caching)
+// =====================================================================
+const BOSS_LINES = {
+  spawn: ["nah, I'd win.", "it's giving... free real estate", "you're not him, chat",
+          "certified Ohio moment", "L + ratio + skill issue"],
+  hurt:  ["ow. very cringe of you", "bro thinks he's the main character", "GYATT that stung",
+          "stop it. get some help", "this is lowkey harassment"],
+  death: ["fanum taxed...", "gg go next", "tell my sludge I loved them",
+          "unsubbed. unfollowed. deceased.", "actually so unfair"],
+};
+const speeches = []; // {spr, ttl}
+
+function makeSpeech(text){
+  const cv = document.createElement('canvas');
+  cv.width = 512; cv.height = 128;
+  const ctx = cv.getContext('2d');
+  // bubble + tail
+  ctx.fillStyle = 'rgba(12,16,28,0.88)';
+  ctx.strokeStyle = '#ffe14d'; ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.rect(10, 8, 492, 82);
+  ctx.fill(); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(236, 90); ctx.lineTo(256, 122); ctx.lineTo(276, 90);
+  ctx.fill();
+  // text, shrunk to fit
+  let fs = 32;
+  ctx.font = 'bold '+fs+'px "Courier New", monospace';
+  while(ctx.measureText(text).width > 470 && fs > 14){ fs -= 2; ctx.font = 'bold '+fs+'px "Courier New", monospace'; }
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#ffe14d';
+  ctx.fillText(text, 256, 50);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.minFilter = THREE.LinearFilter;
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map:tex, transparent:true, depthTest:false }));
+  spr.scale.set(6, 1.5, 1);
+  return spr;
+}
+
+function bossSay(kind, e, pos){
+  const lines = BOSS_LINES[kind];
+  const spr = makeSpeech(lines[(Math.random()*lines.length)|0]);
+  if(e){
+    const gs = e.group.scale.x;
+    spr.scale.set(6/gs, 1.5/gs, 1);   // undo the boss scale-up
+    spr.position.set(0, 3.7, 0);
+    e.group.add(spr);
+  } else {
+    spr.position.set(pos.x, 5.4, pos.z);
+    scene.add(spr);
+  }
+  speeches.push({ spr, ttl: 2.8 });
+  SFX.talk();
+}
+
+function updateSpeeches(dt){
+  for(let i=speeches.length-1;i>=0;i--){
+    const s = speeches[i];
+    s.ttl -= dt;
+    s.spr.material.opacity = Math.min(1, s.ttl/0.6);
+    if(s.ttl<=0){
+      if(s.spr.parent) s.spr.parent.remove(s.spr);
+      s.spr.material.map.dispose();
+      s.spr.material.dispose();
+      speeches.splice(i,1);
+    }
+  }
+}
+
+// =====================================================================
+//  PARTICLES  (pooled small cubes)
+// =====================================================================
+const particles = [];
+const PART_GEO = BOX;
+function spawnParticle(x,y,z,color,scale,vx,vy,vz,life){
+  const m = new THREE.Mesh(PART_GEO, mat(color));
+  const s = scale||0.18;
+  m.scale.set(s,s,s);
+  m.position.set(x,y,z);
+  scene.add(m);
+  particles.push({ mesh:m, vx,vy,vz, life, max:life, rot:(Math.random()-0.5)*0.4 });
+}
+function burst(x,y,z,color,n,power){
+  for(let i=0;i<n;i++){
+    const a = Math.random()*Math.PI*2, up=Math.random()*0.8+0.2;
+    const sp = (power||3)*(0.4+Math.random());
+    spawnParticle(x,y,z,color, 0.12+Math.random()*0.14,
+      Math.cos(a)*sp, up*sp, Math.sin(a)*sp, 0.4+Math.random()*0.3);
+  }
+}
+// red, dice-sized cube splatters when a bullet bites into an enemy
+function bloodBurst(x,y,z,n,power){
+  for(let i=0;i<n;i++){
+    const a = Math.random()*Math.PI*2, up=Math.random()*0.9+0.1;
+    const sp = (power||3)*(0.4+Math.random());
+    const red = (Math.random()<0.5) ? 0xc81e1e : 0x9b0d12;   // two shades for depth
+    spawnParticle(x,y,z, red, 0.15+Math.random()*0.09,        // ~dice-sized
+      Math.cos(a)*sp, up*sp, Math.sin(a)*sp, 0.45+Math.random()*0.35);
+  }
+}
+
+// =====================================================================
+//  HUD refs + helpers
+// =====================================================================
+const elScore = document.getElementById('score');
+const elBestSmall = elScore.querySelector('small');
+const elHealth = document.getElementById('health');
+const elLives = document.getElementById('lives');
+const elHpBar = document.querySelector('#hpbar > i');
+const elCombo = document.getElementById('combo');
+const elMult = elCombo.querySelector('.mult');
+const elComboBar = elCombo.querySelector('.bar > i');
+const elCross = document.getElementById('cross');
+const elHit = document.getElementById('hitmark');
+const elDmg = document.getElementById('dmg');
+const elFloat = document.getElementById('floaters');
+const startOv = document.getElementById('start');
+const overOv = document.getElementById('over');
+const elRadar = document.getElementById('radar');
+const rctx = elRadar.getContext('2d');
+const RAD_SIZE = elRadar.width;      // canvas px
+const RAD_PAD = 6;                   // px inset so the map outline isn't clipped
+const elAmmo = document.getElementById('ammo');
+const elAmmoN = document.getElementById('ammo-n');
+const elAmmoLabel = document.getElementById('ammo-label');
+const elNade = document.getElementById('nades');
+const elNadeN = document.getElementById('nade-n');
+const elRemain = document.getElementById('remain');
+const elRemainN = elRemain.querySelector('b');
+const elLowhp = document.getElementById('lowhp');
+const elInvuln = document.getElementById('invuln');
+const elSprint = document.getElementById('sprint');
+const elSprintFill = elSprint.querySelector('i');
+const elMuteInd = document.getElementById('muteind');
+const elStartTitle = document.getElementById('start-title');
+const elStartSub = document.getElementById('start-sub');
+const elStartBlink = document.getElementById('start-blink');
+const START_TITLE_HTML = elStartTitle.innerHTML;
+const START_SUB_TEXT = elStartSub.textContent;
+const START_BLINK_TEXT = elStartBlink.textContent;
+const elWave = document.getElementById('wave');
+const elWaveBanner = document.getElementById('wavebanner');
+const elTypeToast = document.getElementById('typetoast');
+const elBossBar = document.getElementById('bossbar');
+const elBossName = document.getElementById('boss-name');
+const elBossFill = elBossBar.querySelector('.track > i');
+
+// =====================================================================
+//  GAME STATE / SCORING / COMBO
+// =====================================================================
+// localStorage with a try/catch so private-mode browsers don't throw
+function lsGet(k, dflt){ try{ const v=localStorage.getItem(k); return v==null?dflt:v; }catch(e){ return dflt; } }
+function lsSet(k, v){ try{ localStorage.setItem(k, v); }catch(e){} }
+
+const G = {
+  running:false,
+  score:0,
+  best: Number(lsGet('brainrot_best', 0)),
+  combo:1,
+  comboTimer:0,
+  comboWindow:2.6,    // seconds before decay
+  bestCombo: Number(lsGet('brainrot_bestcombo', 1)),
+  bestWave: Number(lsGet('brainrot_bestwave', 1)),
+  muted: lsGet('brainrot_muted', '0') === '1',
+  shake:0,
+  hitstop:0,
+  spawnTimer:0,
+  fireCd:0,
+  difficulty:0,
+  // wave system
+  wave:0,            // current wave number (0 = not started)
+  waveActive:false,  // true while a wave's enemies are spawning / alive
+  pendingSpawn:0,    // enemies still to spawn this wave
+  exitOpen:false,    // wave cleared — exit unlocked, waiting for the player to reach it
+  lockHint:0,        // cooldown on the "kill everything to open the portal" reminder
+  triggers:[],       // progress trigger lines: {frac, count, fired}
+  arenaSeed:'init',  // per-run seed for arena shapes (daily runs share one)
+  boss:null,         // the active boss enemy, if any
+  awaitingInitials:false, // true while the game-over initials prompt is open
+  overAt:0,          // timestamp of the last game over — guards panic-tap instant restarts
+  daily:false,       // true when running the seeded daily challenge
+  choosing:false,    // true while the boss-kill upgrade choice is open (sim freezes)
+  bossesDown:0,      // bosses defeated this run — indexes the upgrade offers
+  critCount:0,       // crits landed this run (GYATT LORD)
+  pickupCount:0,     // pickups grabbed this run (FANUM TAX)
+  bossHitFree:true,  // no damage taken since the boss spawned (BUILT DIFFERENT)
+};
+elBestSmall.textContent = 'BEST '+G.best;
+
+// =====================================================================
+//  HIGH-SCORE BOARD  (top 10, persisted; initials entered at game over)
+// =====================================================================
+const LB_KEY = 'brainrot_scores';
+const LB_MAX = 10;
+const elBoard  = document.getElementById('board');
+const elEntry  = document.getElementById('entry');
+const elSlots  = document.getElementById('in-slots');
+const elOverBlink = document.getElementById('over-blink');
+const elStartBoard = document.getElementById('start-board');
+const elStartBoardTitle = document.getElementById('start-board-title');
+let initials = '';
+
+function loadBoard(){
+  try{ const a = JSON.parse(lsGet(LB_KEY, '[]')); return Array.isArray(a) ? a : []; }
+  catch(e){ return []; }
+}
+function saveBoard(list){ lsSet(LB_KEY, JSON.stringify(list.slice(0, LB_MAX))); }
+// qualifies if the board isn't full yet, or the score beats the current #10
+function scoreQualifies(score){
+  if(score <= 0) return false;
+  const b = loadBoard();
+  return b.length < LB_MAX || score > b[b.length-1].score;
+}
+function boardHTML(highlightIdx){
+  const b = loadBoard();
+  let html = '<div class="row head"><span class="rank">#</span><span class="who">NAME</span><span class="pts">SCORE</span></div>';
+  if(!b.length){
+    html += '<div class="row"><span class="rank"></span><span class="who">— no scores yet —</span><span class="pts"></span></div>';
+  }
+  for(let i=0;i<b.length;i++){
+    const e = b[i];
+    html += '<div class="row'+(i===highlightIdx?' you':'')+'">'
+          + '<span class="rank">'+(i+1)+'</span>'
+          + '<span class="who">'+(e.initials||'???')+'</span>'
+          + '<span class="pts">'+e.score+'</span></div>';
+  }
+  return html;
+}
+function renderBoard(highlightIdx){
+  elBoard.innerHTML = boardHTML(highlightIdx);
+  resetTabs(elOverTabs);   // fresh game-over always lands on the LOCAL tab
+}
+// start screen: show the board once a score exists (or whenever online boards are on)
+function renderStartBoard(){
+  const has = loadBoard().length > 0 || !!API_URL;
+  elStartBoardTitle.style.display = has ? '' : 'none';
+  elStartBoard.style.display = has ? '' : 'none';
+  if(has) elStartBoard.innerHTML = boardHTML(-1);
+  resetTabs(elStartTabs);
+  renderAchRow(elStartAch);
+}
+function updateInitialsUI(){
+  let html = '';
+  for(let i=0;i<3;i++){
+    const ch  = initials[i] || '_';
+    const cur = (i === initials.length && initials.length < 3);
+    html += '<span'+(cur ? ' class="cur"' : '')+'>'+ch+'</span>';
+  }
+  elSlots.innerHTML = html;
+}
+function handleInitialsKey(e){
+  if(e.code === 'Enter'){ if(initials.length > 0) submitInitials(); return; }
+  if(e.code === 'Backspace'){ initials = initials.slice(0, -1); updateInitialsUI(); return; }
+  if(/^[a-zA-Z]$/.test(e.key) && initials.length < 3){
+    initials += e.key.toUpperCase();
+    updateInitialsUI();
+    tone(520 + initials.length*90, 0.05, 'square', 0.10, 760);
+  }
+}
+function submitInitials(){
+  const list = loadBoard();
+  const entry = { initials: initials, score: G.score, wave: G.wave, combo: G.bestCombo };
+  list.push(entry);
+  list.sort((a,b)=> b.score - a.score);
+  const trimmed = list.slice(0, LB_MAX);
+  saveBoard(trimmed);
+  G.awaitingInitials = false;
+  elEntry.classList.add('hidden');
+  elInInput.blur(); elInInput.value = '';
+  elInSave.classList.add('hidden');
+  renderBoard(trimmed.indexOf(entry));   // highlight the row we just added
+  renderStartBoard();                    // keep the start-screen board in sync
+  submitOnline(entry);                   // fire-and-forget to the world board
+  elOverBlink.classList.remove('hidden');
+  tone(880,0.10,'square',0.14,1320); tone(1200,0.09,'sine',0.10,1600);
+}
+
+// =====================================================================
+//  ACHIEVEMENTS  (meme badges, persisted across runs)
+// =====================================================================
+const ACH = [
+  { id:'sigma',  name:'SIGMA GRINDSET',  desc:'Hit a x20 combo' },
+  { id:'built',  name:'BUILT DIFFERENT', desc:'Kill a boss without taking damage' },
+  { id:'gyattl', name:'GYATT LORD',      desc:'Land 10 crits in one run' },
+  { id:'grass',  name:'TOUCH GRASS',     desc:'Reach wave 15' },
+  { id:'ohio',   name:'OHIO FINAL BOSS', desc:'Defeat the wave-10 boss' },
+  { id:'npc',    name:'NPC BEHAVIOR',    desc:'Die on wave 1' },
+  { id:'tax',    name:'FANUM TAX',       desc:'Grab 15 pickups in one run' },
+];
+const elAchToast = document.getElementById('achtoast');
+const elStartAch = document.getElementById('start-ach');
+const elOverAch  = document.getElementById('over-ach');
+let achUnlocked = {};
+try{ achUnlocked = JSON.parse(lsGet('brainrot_ach','{}')) || {}; }catch(e){ achUnlocked = {}; }
+
+function unlockAch(id){
+  if(achUnlocked[id]) return;
+  achUnlocked[id] = true;
+  lsSet('brainrot_ach', JSON.stringify(achUnlocked));
+  const a = ACH.find(x=>x.id===id);
+  if(!a) return;
+  // stagger the toast so it never fights a boss banner / speech / upgrade card
+  setTimeout(()=>{
+    elAchToast.innerHTML = '🏆 '+a.name+'<small>'+a.desc+'</small>';
+    elAchToast.classList.add('show');
+    clearTimeout(unlockAch._t);
+    unlockAch._t = setTimeout(()=>elAchToast.classList.remove('show'), 2600);
+    tone(780,0.10,'square',0.13,1170); tone(1040,0.14,'sine',0.11,1560);
+  }, 1800);
+}
+
+function renderAchRow(el){
+  let html = '';
+  for(const a of ACH){
+    const u = achUnlocked[a.id];
+    html += '<span class="ach'+(u?' got':'')+'" title="'+a.desc+'">'+(u?a.name:'???')+'</span>';
+  }
+  el.innerHTML = html;
+}
+
+function addScore(base, head, x,y,z){
+  const gained = Math.round(base * G.combo);
+  G.score += gained;
+  elScore.firstChild.textContent = G.score;
+  // floating number at projected position
+  floatNumber('+'+gained, x,y,z, head);
+}
+
+function bumpCombo(){
+  G.combo++;
+  G.comboTimer = G.comboWindow;
+  if(G.combo>G.bestCombo) G.bestCombo=G.combo;
+  if(G.combo>=20) unlockAch('sigma');
+  elCombo.classList.remove('hidden');
+  elMult.textContent = 'x'+G.combo;
+  // pop animation
+  elCombo.style.transform = 'translateX(-50%) scale(1.35)';
+  setTimeout(()=>{ elCombo.style.transform='translateX(-50%) scale(1)'; }, 90);
+  // greedier color as it climbs
+  const hot = Math.min(G.combo,12);
+  const c = hot<4? '#ffe14d' : hot<7? '#ff9e2c' : hot<10? '#ff5b2c':'#ff2c6d';
+  elMult.style.color = c; elComboBar.style.background=c;
+  SFX.combo(Math.min(G.combo,10));
+}
+function breakCombo(){
+  if(G.combo>1){ G.combo=1; elMult.textContent='x1'; }
+  G.comboTimer=0;
+  elCombo.classList.add('hidden');
+}
+
+function floatNumber(txt, x,y,z, head, cls){
+  const v = new THREE.Vector3(x,y,z).project(camera);
+  if(v.z>1) return;
+  const sx = (v.x*0.5+0.5)*window.innerWidth;
+  const sy = (-v.y*0.5+0.5)*window.innerHeight;
+  const d = document.createElement('div');
+  d.className='floater'+(head?' head':'')+(cls?' '+cls:'');
+  d.textContent=txt;
+  d.style.left=sx+'px'; d.style.top=sy+'px';
+  elFloat.appendChild(d);
+  setTimeout(()=>d.remove(), 950);
+}
+
+function flashHit(){
+  elCross.classList.add('hit');
+  setTimeout(()=>elCross.classList.remove('hit'), 70);
+  elHit.style.transition='none'; elHit.style.opacity='1';
+  setTimeout(()=>{ elHit.style.transition='opacity .18s'; elHit.style.opacity='0'; }, 20);
+}
+
+function damageFlash(){
+  elDmg.style.opacity='0.9';
+  setTimeout(()=>elDmg.style.opacity='0', 110);
+}
+
+// Overheal: base 100 + one extra cap point per round completed.
+// Wave 1 caps at 100, wave 2 at 101, wave 3 at 102, ... so health packs can bank a small buffer.
+function maxHealth(){ return 100 + Math.max(0, G.wave - 1); }
+
+function setHealth(h){
+  player.hp = Math.max(0, Math.min(maxHealth(), h));
+  elHealth.textContent = Math.ceil(player.hp);
+  // gold-tint the number while overhealed so the >100 bonus reads at a glance
+  elHealth.style.color = player.hp > 100 ? '#ffd23f' : '';
+  // bar fills to 100% at base health; overheal shows as a full bar + the >100 number
+  elHpBar.style.width = Math.min(100, player.hp) + '%';
+  elHpBar.style.background = player.hp>50? '#46d35a' : player.hp>25? '#ffc63a':'#e23b3b';
+  // persistent low-health vignette (separate element from the transient #dmg flash)
+  elLowhp.classList.toggle('on', player.alive && player.hp>0 && player.hp<25);
+}
+
+// hearts = remaining extra lives; a hollow heart placeholder keeps the row from collapsing at 0
+function updateLivesHUD(){
+  elLives.textContent = player.lives > 0 ? '♥'.repeat(player.lives) : '♡';
+}
+
+// =====================================================================
+//  DAILY CHALLENGE  (seeded runs — everyone on Earth gets the same waves)
+// =====================================================================
+// xmur3 string hash → mulberry32 PRNG
+function xmur3(str){
+  let h = 1779033703 ^ str.length;
+  for(let i=0;i<str.length;i++){
+    h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
+    h = (h<<13) | (h>>>19);
+  }
+  return function(){
+    h = Math.imul(h ^ (h>>>16), 2246822507);
+    h = Math.imul(h ^ (h>>>13), 3266489909);
+    return (h ^= h>>>16) >>> 0;
+  };
+}
+function mulberry32(a){
+  return function(){
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a>>>15), 1 | a);
+    t = (t + Math.imul(t ^ (t>>>7), 61 | t)) ^ t;
+    return ((t ^ (t>>>14)) >>> 0) / 4294967296;
+  };
+}
+function seededRng(str){ return mulberry32(xmur3(str)()); }
+
+const DAILY_EPOCH = Date.UTC(2026, 5, 30);   // daily #1 = 2026-07-01 UTC
+function dailyStr(){ return new Date().toISOString().slice(0,10); }   // UTC date
+function dailyNum(){ return Math.max(1, Math.floor((Date.now() - DAILY_EPOCH)/864e5)); }
+
+// the spawn stream: wave composition, spawn edges, hp bonuses, minion colors, drops.
+// Classic mode keeps plain Math.random so nothing changes; daily mode swaps in the
+// day's seed. Anything player-coupled (spread, crits, particles) stays Math.random.
+let rngSpawn = Math.random;
+
+const elDailyResult = document.getElementById('daily-result');
+const elShareBtn = document.getElementById('share-btn');
+const elClassicBtn = document.getElementById('classic-btn');
+document.getElementById('daily-num').textContent = '#'+dailyNum();
+
+function startRun(daily){
+  G.daily = daily;
+  audioInit();
+  resetGame();
+  lockPointer();
+}
+document.getElementById('daily-btn').addEventListener('click', (e)=>{ e.stopPropagation(); startRun(true); });
+elClassicBtn.addEventListener('click', (e)=>{ e.stopPropagation(); startRun(false); });
+
+function fallbackCopy(text, done){
+  try{
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy');
+    ta.remove(); done();
+  }catch(err){}
+}
+elShareBtn.addEventListener('click', (e)=>{
+  e.stopPropagation();
+  const text = '🧠 jBrainRot Daily #'+dailyNum()+' — Wave '+G.wave+', '+G.score.toLocaleString()+' pts\n'
+             + 'https://jgravelle.github.io/jBrainrot-Game/';
+  const done = ()=>{
+    elShareBtn.textContent = '✅ COPIED!';
+    setTimeout(()=>{ elShareBtn.textContent = '📋 SHARE'; }, 1400);
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done).catch(()=>fallbackCopy(text, done));
+  } else fallbackCopy(text, done);
+});
+
+// =====================================================================
+//  ONLINE LEADERBOARD  (optional — everything degrades to local-only)
+// =====================================================================
+// Set to your deployed endpoint, e.g. 'https://yourdomain.com/jbr/api/scores.php'.
+// Empty string = online boards disabled; the WORLD/DAILY tabs stay hidden.
+const API_URL = 'https://j.gravelle.us/APIs/Games/scores.php';
+const JBR_SALT = 'jbr-v1-gyatt';   // must match config.php on the server
+
+// FNV-1a 32-bit — mirrors jbrToken() in api/scores.php
+function jbrToken(s){
+  let h = 2166136261;
+  for(let i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return (h>>>0).toString(16);
+}
+
+async function apiFetch(url, opts){
+  if(!API_URL) return null;
+  try{
+    const ctl = new AbortController();
+    const t = setTimeout(()=>ctl.abort(), 4000);
+    const r = await fetch(url, Object.assign({ signal: ctl.signal }, opts));
+    clearTimeout(t);
+    if(!r.ok) return null;
+    return await r.json();
+  }catch(e){ return null; }   // offline / blocked / timeout — never throws into game code
+}
+const apiGet  = (params)=> apiFetch(API_URL+'?'+new URLSearchParams(params));
+const apiPost = (body)=> apiFetch(API_URL, { method:'POST',
+  headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+
+const boardCache = { world:{t:0,data:null}, daily:{t:0,data:null} };
+async function fetchBoard(src){
+  const c = boardCache[src];
+  if(c.data && performance.now()-c.t < 60000) return c.data;
+  const data = await apiGet(src==='daily'
+    ? { mode:'daily', day: dailyStr(), limit: 10 }
+    : { mode:'global', limit: 10 });
+  if(data){ c.data = data; c.t = performance.now(); }
+  return data;
+}
+
+function remoteBoardHTML(list){
+  let html = '<div class="row head"><span class="rank">#</span><span class="who">NAME</span><span class="pts">SCORE</span></div>';
+  if(!list.length){
+    html += '<div class="row"><span class="rank"></span><span class="who">— no scores yet —</span><span class="pts"></span></div>';
+  }
+  for(let i=0;i<list.length;i++){
+    const who = String(list[i].initials||'').replace(/[^A-Z]/g,'').slice(0,3) || '???';
+    html += '<div class="row"><span class="rank">'+(i+1)+'</span>'
+          + '<span class="who">'+who+'</span>'
+          + '<span class="pts">'+(list[i].score|0)+'</span></div>';
+  }
+  return html;
+}
+
+async function showBoard(el, src){
+  if(src==='local'){ el.innerHTML = boardHTML(-1); return; }
+  el.innerHTML = '<div class="row"><span class="rank"></span><span class="who">loading…</span><span class="pts"></span></div>';
+  const data = await fetchBoard(src);
+  el.innerHTML = data ? remoteBoardHTML(data)
+    : '<div class="row"><span class="rank"></span><span class="who">OFFLINE — LOCAL ONLY</span><span class="pts"></span></div>';
+}
+
+const elStartTabs = document.getElementById('start-tabs');
+const elOverTabs  = document.getElementById('over-tabs');
+function initTabs(tabsEl, boardEl){
+  if(!API_URL) return;   // tabs stay hidden without a backend
+  tabsEl.classList.remove('hidden');
+  tabsEl.querySelectorAll('span').forEach(sp=>{
+    sp.addEventListener('click', (e)=>{
+      e.stopPropagation();   // don't restart/resume the game
+      tabsEl.querySelectorAll('span').forEach(x=>x.classList.remove('on'));
+      sp.classList.add('on');
+      showBoard(boardEl, sp.dataset.src);
+    });
+  });
+}
+function resetTabs(tabsEl){
+  tabsEl.querySelectorAll('span').forEach((x,i)=>x.classList.toggle('on', i===0));
+}
+initTabs(elStartTabs, elStartBoard);
+initTabs(elOverTabs, elBoard);
+
+// fire-and-forget submit after initials are saved locally
+function submitOnline(entry){
+  if(!API_URL) return;
+  const mk = (mode, day)=>({
+    initials: entry.initials, score: entry.score, wave: entry.wave, combo: entry.combo,
+    mode, day: day || undefined,
+    t: jbrToken(entry.score+'|'+entry.wave+'|'+(day||'')+'|'+JBR_SALT),
+  });
+  apiPost(mk('global', null)).then(r=>{ if(r && r.ok) boardCache.world.data = null; });
+  if(G.daily) apiPost(mk('daily', dailyStr())).then(r=>{ if(r && r.ok) boardCache.daily.data = null; });
+}
+
+// =====================================================================
+//  POINTER LOCK / INPUT
+// =====================================================================
+function lockPointer(){ if(!touchMode) canvas.requestPointerLock(); }
+
+startOv.addEventListener('click', ()=>{ audioInit(); if(touchMode) resumeFromOverlay(); else lockPointer(); });
+overOv.addEventListener('click', ()=>{
+  if(G.awaitingInitials) return;
+  if(performance.now() - G.overAt < 600) return;   // panic-tap guard right after death
+  audioInit();
+  resetGame();
+  lockPointer();
+});
+
+function setPauseText(paused){
+  if(paused){
+    elStartTitle.textContent = 'PAUSED';
+    elStartSub.textContent = 'Take a breath. The brainrot waits.';
+    elStartBlink.textContent = touchMode ? 'TAP TO RESUME' : 'CLICK TO RESUME';
+  } else {
+    elStartTitle.innerHTML = START_TITLE_HTML;
+    elStartSub.textContent = START_SUB_TEXT;
+    elStartBlink.textContent = touchMode ? 'TAP TO PLAY' : START_BLINK_TEXT;
+  }
+}
+
+// running/paused is decoupled from pointer lock so touch play works the same way:
+// desktop drives these via pointerlockchange, touch calls them directly.
+function resumeFromOverlay(){
+  startOv.classList.add('hidden');
+  setPauseText(false);
+  if(!G.running && player.alive){ startGame(); }
+  G.running = player.alive;
+}
+function pauseGame(){
+  if(!player.alive) return;
+  G.running = false;
+  resetTouchState();
+  setPauseText(true);
+  renderStartBoard();
+  startOv.classList.remove('hidden');
+}
+
+document.addEventListener('pointerlockchange', ()=>{
+  const locked = document.pointerLockElement === canvas;
+  if(locked) resumeFromOverlay();
+  else pauseGame();   // Esc — pauseGame no-ops once the player is dead
+});
+
+// auto-pause when the tab is hidden (also covers phones switching apps)
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden && G.running) pauseGame();
+});
+
+document.addEventListener('mousemove', (e)=>{
+  if(document.pointerLockElement!==canvas) return;
+  yaw   -= e.movementX*MOUSE_SENS;
+  pitch -= e.movementY*MOUSE_SENS;
+  pitch = Math.max(-PITCH_CLAMP, Math.min(PITCH_CLAMP, pitch));
+});
+
+document.addEventListener('keydown', (e)=>{
+  // while the game-over initials prompt is open, keys go to it and nothing else
+  if(G.awaitingInitials){ handleInitialsKey(e); e.preventDefault(); return; }
+  // upgrade choice open: 1/2/3 picks (the pointer stays locked, so no cursor)
+  if(G.choosing){
+    if(e.code==='Digit1') pickChoice(0);
+    else if(e.code==='Digit2') pickChoice(1);
+    else if(e.code==='Digit3') pickChoice(2);
+    return;
+  }
+  keys[e.code]=true;
+  if(e.getModifierState) capsSprint = e.getModifierState('CapsLock');   // CAPS on = always run
+  if(e.code==='KeyR') startReload();
+  // grenade on 'G' — guard e.repeat so holding the key throws once, not every frame
+  if(e.code==='KeyG' && !e.repeat) throwGrenade();
+  if(e.code==='KeyM' && !e.repeat) toggleMute();
+  if(e.code==='Space'){ e.preventDefault(); if(!e.repeat) tryJump(); }
+});
+document.addEventListener('keyup', (e)=>{
+  keys[e.code]=false;
+  if(e.getModifierState) capsSprint = e.getModifierState('CapsLock');
+});
+
+function tryJump(){
+  if(!G.running || !player.alive || G.choosing) return;
+  if(player.jumpH<=0) player.jumpVy = 7.5;   // grounded only — no double jumps
+}
+
+document.addEventListener('mousedown', (e)=>{
+  if(document.pointerLockElement!==canvas || !G.running) return;
+  if(e.button===0) shoot();
+});
+
+// sprint is non-exhaustive: it lasts as long as SHIFT is held (or the touch
+// button is pressed), and CAPS LOCK on means always run
+let capsSprint = false;
+let touchSprint = false;
+
+// =====================================================================
+//  TOUCH CONTROLS  (floating joystick + look-drag + buttons)
+// =====================================================================
+const touchUI = document.getElementById('touchui');
+const joyEl   = document.getElementById('joy');
+const joyNub  = document.getElementById('joy-nub');
+const elInInput   = document.getElementById('in-input');
+const elInSave    = document.getElementById('in-save');
+const elEntryHint = document.getElementById('entry-hint');
+
+const touchMove = { x:0, z:0 };   // joystick deflection, added to WASD in update()
+let touchFiring = false;          // FIRE held — auto-fires on cooldown in update()
+let joyId = null, lookId = null;  // active touch identifiers (never use e.touches[0])
+const joyAnchor = { x:0, y:0 };
+const lookLast  = { x:0, y:0 };
+const JOY_RANGE = 48;             // px of nub travel = full deflection
+
+function activateTouchMode(){
+  if(touchMode) return;
+  touchMode = true;
+  document.body.classList.add('touch');
+  touchUI.classList.remove('hidden');
+  elOverBlink.textContent = 'TAP TO RESTART';
+  elEntryHint.textContent = 'TAP THE LETTERS TO TYPE · SAVE WHEN DONE';
+  setPauseText(G.wave > 0 && player.alive && !G.running);
+}
+
+function resetTouchState(){
+  touchMove.x = 0; touchMove.z = 0;
+  touchFiring = false;
+  joyId = null; lookId = null;
+  joyEl.style.display = 'none';
+}
+
+function bindBtn(el, down, up){
+  // stopPropagation keeps button presses out of the joystick/look router below
+  el.addEventListener('touchstart', (e)=>{ e.preventDefault(); e.stopPropagation(); audioInit(); down(); }, {passive:false});
+  el.addEventListener('touchend',   (e)=>{ e.preventDefault(); if(up) up(); }, {passive:false});
+  el.addEventListener('touchcancel',()=>{ if(up) up(); });
+}
+bindBtn(document.getElementById('btn-fire'),   ()=>{ touchFiring = true; }, ()=>{ touchFiring = false; });
+bindBtn(document.getElementById('btn-nade'),   ()=>{ throwGrenade(); });
+bindBtn(document.getElementById('btn-sprint'), ()=>{ touchSprint = true; }, ()=>{ touchSprint = false; });
+bindBtn(document.getElementById('pausebtn'),   ()=>{ if(G.running) pauseGame(); });
+
+window.addEventListener('touchstart', (e)=>{
+  activateTouchMode();
+  if(!G.running) return;   // overlay taps are handled by their own click handlers
+  for(const t of e.changedTouches){
+    if(joyId===null && t.clientX < window.innerWidth*0.42){
+      // left zone: anchor a floating joystick right under the thumb
+      joyId = t.identifier;
+      joyAnchor.x = t.clientX; joyAnchor.y = t.clientY;
+      joyEl.style.left = (t.clientX-62)+'px';
+      joyEl.style.top  = (t.clientY-62)+'px';
+      joyNub.style.transform = 'translate(-50%,-50%)';
+      joyEl.style.display = 'block';
+    } else if(lookId===null){
+      lookId = t.identifier;
+      lookLast.x = t.clientX; lookLast.y = t.clientY;
+    }
+  }
+}, {passive:false});
+
+window.addEventListener('touchmove', (e)=>{
+  e.preventDefault();   // kill scroll / pull-to-refresh / pinch
+  if(!G.running) return;
+  for(const t of e.changedTouches){
+    if(t.identifier === joyId){
+      let dx = t.clientX - joyAnchor.x, dy = t.clientY - joyAnchor.y;
+      const d = Math.hypot(dx, dy);
+      if(d > JOY_RANGE){ dx *= JOY_RANGE/d; dy *= JOY_RANGE/d; }
+      touchMove.x = dx/JOY_RANGE;
+      touchMove.z = dy/JOY_RANGE;   // screen-down = backward, same sign as KeyS
+      joyNub.style.transform = 'translate(calc(-50% + '+dx+'px), calc(-50% + '+dy+'px))';
+    } else if(t.identifier === lookId){
+      yaw   -= (t.clientX - lookLast.x)*TOUCH_SENS;
+      pitch -= (t.clientY - lookLast.y)*TOUCH_SENS;
+      pitch = Math.max(-PITCH_CLAMP, Math.min(PITCH_CLAMP, pitch));
+      lookLast.x = t.clientX; lookLast.y = t.clientY;
+    }
+  }
+}, {passive:false});
+
+function touchDone(e){
+  for(const t of e.changedTouches){
+    if(t.identifier === joyId){
+      joyId = null;
+      touchMove.x = 0; touchMove.z = 0;
+      joyEl.style.display = 'none';
+    } else if(t.identifier === lookId){
+      lookId = null;
+    }
+  }
+}
+window.addEventListener('touchend', touchDone);
+window.addEventListener('touchcancel', touchDone);
+document.addEventListener('gesturestart', (e)=>e.preventDefault());   // iOS pinch
+
+// touch initials entry: a hidden input drives the arcade slots via the OS keyboard
+elSlots.addEventListener('click', (e)=>{ if(touchMode){ e.stopPropagation(); elInInput.focus(); } });
+elInInput.addEventListener('keydown', (e)=>{
+  e.stopPropagation();   // keep the document-level initials handler out of the way
+  if(e.key === 'Enter' && initials.length > 0) submitInitials();
+});
+elInInput.addEventListener('input', ()=>{
+  initials = elInInput.value.toUpperCase().replace(/[^A-Z]/g,'').slice(0,3);
+  elInInput.value = initials;
+  updateInitialsUI();
+  tone(520 + initials.length*90, 0.05, 'square', 0.10, 760);
+});
+elInSave.addEventListener('click', (e)=>{
+  e.stopPropagation();   // don't let the tap fall through to the restart overlay
+  if(initials.length > 0) submitInitials();
+});
+
+// =====================================================================
+//  ROGUELITE UPGRADES  (pick 1 of 3 after every boss kill)
+// =====================================================================
+const MUTATORS = [
+  { id:'mags',   name:'THICC MAGS',      desc:'+50% magazine size (and a free top-off)', max:2 },
+  { id:'reload', name:'SPEEDY UNBOXING', desc:'30% faster reloads',                      max:2 },
+  { id:'vamp',   name:'VAMPIRE AURA',    desc:'+3 HP on every kill',                     max:2 },
+  { id:'burn',   name:"RATIO'D",         desc:'Your hits set the brainrot on fire',      max:1 },
+  { id:'rico',   name:'RICOCHET RIZZ',   desc:'Hits arc to a nearby enemy',              max:1 },
+  { id:'nades',  name:'NUCLEAR NADES',   desc:'+40% grenade blast radius',               max:2 },
+  { id:'zoom',   name:'ZOOMIES',         desc:'Sprint even faster',                      max:2 },
+  { id:'gyatt',  name:'GYATT ENERGY',    desc:'+6% crit chance',                         max:3 },
+];
+
+const elChoice = document.getElementById('choice');
+const choiceCards = Array.from(elChoice.querySelectorAll('.card'));
+choiceCards.forEach((c,i)=>{
+  c.addEventListener('click', ()=> pickChoice(i));
+  c.addEventListener('touchstart', (e)=> e.stopPropagation());   // keep out of the joystick router
+});
+let choiceOffers = null;
+
+// pure: same (bossIndex, rand stream) → same 3 offers — the daily seed relies on this
+function rollOffers(bossIndex, rand){
+  const pool = MUTATORS.filter(m => (mods.picks[m.id]||0) < m.max);
+  const out = [];
+  while(out.length < 3 && pool.length){
+    out.push(pool.splice(Math.floor(rand()*pool.length), 1)[0]);
+  }
+  return out;
+}
+
+function openChoice(){
+  if(!player.alive) return;
+  if(!G.running){ setTimeout(openChoice, 600); return; }   // wait out a pause
+  // daily runs seed each boss's offers independently, so everyone sees the same cards
+  const offerRand = G.daily ? seededRng('jbr-daily-'+dailyStr()+':boss:'+G.bossesDown) : Math.random;
+  choiceOffers = rollOffers(G.bossesDown, offerRand);
+  if(!choiceOffers.length){ choiceOffers = null; return; } // everything maxed — lucky you
+  G.choosing = true;
+  for(let i=0;i<3;i++){
+    const card = choiceCards[i], m = choiceOffers[i];
+    card.style.display = m ? '' : 'none';
+    if(!m) continue;
+    card.querySelector('em').textContent = touchMode ? 'TAP' : 'PRESS '+(i+1);
+    card.querySelector('b').textContent = m.name;
+    card.querySelector('span').textContent = m.desc;
+  }
+  elChoice.classList.remove('hidden');
+  tone(440,0.10,'square',0.12,660); tone(660,0.12,'square',0.10,880);
+}
+
+function applyMutator(id){
+  if(id==='mags'){ mods.magMul += 0.5; player.maxAmmo = Math.round(24*mods.magMul);
+                   player.ammo = player.maxAmmo; updateAmmoHUD(); }
+  else if(id==='reload'){ mods.reloadMul *= 0.7; }
+  else if(id==='vamp'){ mods.vampire += 3; }
+  else if(id==='burn'){ mods.burn = true; }
+  else if(id==='rico'){ mods.ricochet = true; }
+  else if(id==='nades'){ mods.nadeRMul += 0.4; }
+  else if(id==='zoom'){ mods.sprintPlus += 0.25; }
+  else if(id==='gyatt'){ mods.critBonus += 0.06; }
+}
+
+function pickChoice(i){
+  if(!G.choosing || !choiceOffers || !choiceOffers[i]) return;
+  const m = choiceOffers[i];
+  mods.picks[m.id] = (mods.picks[m.id]||0) + 1;
+  applyMutator(m.id);
+  G.choosing = false;
+  choiceOffers = null;
+  elChoice.classList.add('hidden');
+  elWaveBanner.classList.remove('boss');
+  elWaveBanner.innerHTML = m.name+'<small>'+m.desc+'</small>';
+  elWaveBanner.classList.add('show');
+  clearTimeout(showWaveBanner._t);
+  showWaveBanner._t = setTimeout(()=>elWaveBanner.classList.remove('show'), 1300);
+  tone(660,0.10,'square',0.15,990); tone(880,0.12,'square',0.12,1320);
+}
+
+// =====================================================================
+//  SHOOTING
+// =====================================================================
+const raycaster = new THREE.Raycaster();
+const screenCenter = new THREE.Vector2(0,0);
+let gunRecoil = 0;
+
+const pelletDir = new THREE.Vector2();
+
+function shoot(){
+  if(G.fireCd>0 || player.reloading>0 || G.choosing) return;
+  if(player.ammo<=0){ startReload(); return; }
+  const dbl = player.dblshotgun;
+  const sg = player.shotgun;
+  G.fireCd = dbl ? 0.50 : sg ? 0.42 : 0.12;   // heavier the bigger the boom; pistol stays snappy
+  player.ammo--;
+  updateAmmoHUD();
+  gunRecoil = dbl ? 1.35 : 1;
+  if(dbl){ SFX.shoot(); tone(110,0.16,'sawtooth',0.18,55); noiseBurst(0.12,0.14); }
+  else if(sg){ SFX.shoot(); tone(150,0.12,'sawtooth',0.14,70); noiseBurst(0.08,0.10); }
+  else SFX.shoot();
+  // muzzle flash
+  flashMat.opacity = 1;
+  G.shake = Math.max(G.shake, dbl ? 0.40 : sg ? 0.28 : 0.12);
+
+  const spread  = dbl ? DBLSHOTGUN_SPREAD  : SHOTGUN_SPREAD;
+  const pellets = dbl ? DBLSHOTGUN_PELLETS : sg ? SHOTGUN_PELLETS : 1;
+  const spreads = dbl || sg;
+  for(let i=0; i<pellets; i++){
+    const ox = spreads ? (Math.random()*2-1)*spread : 0;
+    const oy = spreads ? (Math.random()*2-1)*spread : 0;
+    firePellet(ox, oy);
+  }
+  // missed: small combo decay pressure handled by timer; tiny puff is skipped
+}
+
+// one hitscan pellet aimed at screen-center + (ox,oy) jitter in NDC space
+function firePellet(ox, oy){
+  pelletDir.set(ox, oy);
+  raycaster.setFromCamera(pelletDir, camera);
+
+  // gather candidate meshes (enemy parts) — raycast against them.
+  // rebuilt per pellet so an enemy already dropped by a prior pellet is skipped.
+  const hitList = [];
+  for(const e of enemies){ if(e.alive && e.spawning<=0) for(const p of e.parts) hitList.push(p); }
+  const hits = raycaster.intersectObjects(hitList, false);
+
+  if(hits.length){
+    const h = hits[0];
+    const mesh = h.object;
+    const e = enemies.find(en=> en.alive && en.parts.indexOf(mesh)>=0 );
+    if(e){
+      const headShot = (e.headParts.indexOf(mesh) >= 0);
+      hitEnemy(e, headShot, h.point);
+    }
+  }
+}
+
+const CRIT_CHANCE = 0.08;   // random "GYATT DAMAGE" crits — triple damage
+
+function hitEnemy(e, head, point, noChain){
+  flashHit();
+  e.hitFlash = 0.12;
+  e.stagger = 0.18;
+  const crit = Math.random() < CRIT_CHANCE + mods.critBonus;
+  const dmg = (head?2:1) * (crit?3:1);
+  e.hp -= dmg;
+  bloodBurst(point.x, point.y, point.z, crit?18:(head?13:8), crit?5:(head?4:3));
+  if(crit){
+    e.stagger = 0.3;
+    G.critCount++;
+    if(G.critCount>=10) unlockAch('gyattl');
+    floatNumber('GYATT DAMAGE', point.x, point.y+0.35, point.z, false, 'crit');
+    SFX.crit();
+  }
+  if(mods.burn) e.burn = 2.0;   // RATIO'D — damage-over-time ticks in the enemy loop
+
+  if(e.hp<=0){
+    killEnemy(e, head, point);
+  } else {
+    SFX.hit();
+    if(head){
+      // headshot survivor: stunned in place (bosses shrug it off faster)
+      e.stun = Math.max(e.stun, e.boss ? 0.35 : 0.9);
+    } else {
+      // body shot survivor: knocked back a few steps (impulse decays in the enemy loop)
+      const dir = new THREE.Vector3().subVectors(e.group.position, yawObj.position).setY(0).normalize();
+      e.kbX = dir.x; e.kbZ = dir.z;
+      e.kb = Math.max(e.kb, e.boss ? 3 : 10);
+    }
+    // bosses talk smack when their health-bar thirds break
+    if(e.boss){
+      if(!e.said33 && e.hp <= e.maxHp*0.33){ e.said33 = e.said66 = true; bossSay('hurt', e); }
+      else if(!e.said66 && e.hp <= e.maxHp*0.66){ e.said66 = true; bossSay('hurt', e); }
+    }
+  }
+
+  // RICOCHET RIZZ: the hit arcs once to the nearest other enemy
+  if(mods.ricochet && !noChain){
+    let best=null, bd=10;
+    for(const o of enemies){
+      if(o===e || !o.alive || o.spawning>0) continue;
+      const d = Math.hypot(o.group.position.x-point.x, o.group.position.z-point.z);
+      if(d<bd){ bd=d; best=o; }
+    }
+    if(best){
+      const bp = new THREE.Vector3();
+      best.torso.getWorldPosition(bp);
+      hitEnemy(best, false, bp, true);
+    }
+  }
+}
+
+function killEnemy(e, head, point){
+  e.alive=false;
+  const gs = e.group.scale.x;        // bosses are scaled up — match debris/feel to size
+  G.hitstop = e.boss ? 0.12 : 0.042; // chunkier hitstop on a boss kill
+  G.shake = Math.max(G.shake, e.boss ? 0.9 : (head?0.35:0.25));
+  bumpCombo();
+  const tScore = (ETYPES[e.type]||ETYPES.minion).score;
+  const base = e.boss ? (900 + G.wave*120) : (head? Math.round(tScore*1.5) : tScore);
+  addScore(base, head, e.group.position.x, e.group.position.y+2.2*gs, e.group.position.z);
+
+  if(e.boss){ SFX.head(); SFX.kill(); tone(90,0.6,'sawtooth',0.24,40); noiseBurst(0.4,0.22); }
+  else if(head){ SFX.head(); SFX.kill(); }
+  else SFX.kill();
+
+  if(e.boss){
+    G.boss = null;
+    G.bossesDown++;
+    if(G.bossHitFree) unlockAch('built');
+    if(G.wave===10) unlockAch('ohio');
+    bossSay('death', null, e.group.position);
+    setTimeout(openChoice, 1200);   // let the kill moment breathe, then offer upgrades
+    elBossBar.classList.add('hidden');
+    showWaveBanner._t && clearTimeout(showWaveBanner._t);
+    elWaveBanner.classList.remove('boss');
+    // winning a boss battle grants an extra life
+    player.lives++;
+    updateLivesHUD();
+    // first boss down grants the shotgun — bigger, meaner, per-pull spread damage
+    const firstKill = !player.shotgun;
+    // the wave-10 boss upgrades that shotgun to a double-barrel — twice the lead per pull
+    const dblKill = !firstKill && !player.dblshotgun && G.wave >= 10;
+    if(firstKill){
+      player.shotgun = true;
+      player.ammo = player.maxAmmo;   // hand over a full loaded shotgun
+      updateAmmoHUD();
+      updateAmmoLabel();
+      setWeaponModel();               // swap the viewmodel to the shotgun
+      // little pickup fanfare so the upgrade lands
+      tone(520,0.10,'square',0.16,900); tone(780,0.14,'square',0.14,1200);
+    } else if(dblKill){
+      player.dblshotgun = true;
+      player.ammo = player.maxAmmo;   // top off both barrels
+      updateAmmoHUD();
+      updateAmmoLabel();
+      setWeaponModel();               // swap to the beefier double-barrel model
+      // deeper, chunkier fanfare for the bigger gun
+      tone(360,0.12,'square',0.18,620); tone(560,0.16,'square',0.15,900); tone(760,0.18,'square',0.13,1150);
+    }
+    elWaveBanner.innerHTML = firstKill
+      ? 'SHOTGUN ACQUIRED<small>+'+base+' · +1 LIFE</small>'
+      : dblKill
+        ? 'DOUBLE SHOTGUN<small>+'+base+' · +1 LIFE</small>'
+        : 'BOSS DOWN<small>+'+base+' · +1 LIFE</small>';
+    elWaveBanner.classList.add('show');
+    showWaveBanner._t = setTimeout(()=>elWaveBanner.classList.remove('show'), 1600);
+  }
+
+  // explode into component cubes that scatter + fade
+  const debris = e.boss ? 2 : 1;     // bosses throw more chunks
+  for(const p of e.parts){
+    const wp = new THREE.Vector3();
+    p.getWorldPosition(wp);
+    const sx = p.scale.x*gs, sy=p.scale.y*gs, sz=p.scale.z*gs;
+    for(let d=0; d<debris; d++){
+      const m = new THREE.Mesh(BOX, p.material);
+      m.scale.set(sx,sy,sz);
+      m.position.copy(wp);
+      scene.add(m);
+      const a = Math.random()*Math.PI*2;
+      const pw = e.boss ? 1.7 : 1;
+      particles.push({
+        mesh:m,
+        vx:Math.cos(a)*(2+Math.random()*3)*pw,
+        vy:(3+Math.random()*4)*pw,
+        vz:Math.sin(a)*(2+Math.random()*3)*pw,
+        life:0.8+Math.random()*0.4, max:1.2,
+        rot:(Math.random()-0.5)*0.6, big:true
+      });
+    }
+  }
+  // VAMPIRE AURA: kills feed you
+  if(mods.vampire && player.alive) setHealth(player.hp + mods.vampire);
+
+  // loot drops right where it fell
+  dropPickup(e);
+
+  // remove the enemy group
+  scene.remove(e.group);
+  // free
+  const i = enemies.indexOf(e);
+  if(i>=0) enemies.splice(i,1);
+}
+
+// =====================================================================
+//  ENEMY DAMAGE TO PLAYER
+// =====================================================================
+// On revive, drop the player at the arena-edge point farthest from where they
+// died and clearest of live enemies — never back into the swarm that killed them.
+function respawnFarFrom(px, pz){
+  let best = {x:0, z:0}, bestScore = -Infinity;
+  for(const cl of cellList){
+    let s = Math.hypot(cl.x-px, cl.z-pz);      // reward distance from the death spot
+    for(const e of enemies){                   // and from any live enemy (capped so far cells tie-break by death distance)
+      if(e.alive){ s += Math.min(Math.hypot(cl.x-e.group.position.x, cl.z-e.group.position.z), 14)*0.6; }
+    }
+    if(s>bestScore){ bestScore=s; best={x:cl.x, z:cl.z}; }
+  }
+  const np = new THREE.Vector3(best.x, EYE, best.z);
+  collide(np);                                 // shove out of any cover block we landed on
+  yawObj.position.copy(np);
+  yawObj.position.y = EYE;
+  player.vel.set(0,0,0);
+}
+
+function playerHit(amount){
+  if(!player.alive || player.invuln > 0) return;
+  setHealth(player.hp - amount);
+  G.bossHitFree = false;
+  damageFlash();
+  G.shake = Math.max(G.shake, 0.4);
+  SFX.hurt();
+  breakCombo();
+  if(player.hp<=0){
+    if(player.lives > 0){
+      // spend an extra life: revive at full health instead of ending the run
+      player.lives--;
+      updateLivesHUD();
+      setHealth(maxHealth());
+      // teleport clear of the swarm and grant a brief shielded window
+      respawnFarFrom(yawObj.position.x, yawObj.position.z);
+      player.invuln = REVIVE_INVULN;
+      elInvuln.classList.add('on');
+      G.shake = Math.max(G.shake, 0.8);
+      // brief revive fanfare + a banner so the save reads clearly
+      tone(300,0.12,'square',0.18,700); tone(520,0.16,'square',0.15,1000);
+      elWaveBanner.classList.remove('boss');
+      elWaveBanner.innerHTML = 'EXTRA LIFE<small>'+player.lives+' LEFT</small>';
+      elWaveBanner.classList.add('show');
+      clearTimeout(showWaveBanner._t);
+      showWaveBanner._t = setTimeout(()=>elWaveBanner.classList.remove('show'), 1400);
+    } else {
+      gameOver();
+    }
+  }
+}
+
+// =====================================================================
+//  SPAWN / DIFFICULTY
+// =====================================================================
+function enemiesForWave(n){
+  // wave number x 10 — most of them held back behind progress trigger lines
+  return n*10;
+}
+function enemyBaseSpeed(){
+  return 1.3 + Math.min(2.6, G.score/1650 + G.wave*0.08);
+}
+
+function updateWaveHUD(){
+  elWave.textContent = 'WAVE '+G.wave + (isBossWave(G.wave)?' ☠':'')
+                     + (G.daily ? ' · DAILY #'+dailyNum() : '');
+}
+function updateRemainHUD(){
+  // between waves: point at the open exit; during a wave: show live enemy count
+  if(!G.waveActive && G.exitOpen){
+    elRemain.classList.add('clear');
+    elRemain.innerHTML = 'CLEAR — <b>ESCAPE PORTAL OPEN</b>';
+  } else {
+    elRemain.classList.remove('clear');
+    // count the packs still waiting behind unfired trigger lines too
+    let left = G.pendingSpawn + enemies.length;
+    for(const t of G.triggers) if(!t.fired) left += t.count;
+    elRemain.innerHTML = 'LEFT <b>'+left+'</b>';
+  }
+}
+function isBossWave(n){ return n>0 && n%5===0; }
+
+function showWaveBanner(n){
+  const boss = isBossWave(n);
+  elWaveBanner.classList.toggle('boss', boss);
+  elWaveBanner.innerHTML = boss
+    ? 'BOSS WAVE '+n+'<small>SOMETHING BIG APPROACHES</small>'
+    : 'WAVE '+n+'<small>'+enemiesForWave(n)+' INCOMING</small>';
+  elWaveBanner.classList.add('show');
+  clearTimeout(showWaveBanner._t);
+  showWaveBanner._t = setTimeout(()=>elWaveBanner.classList.remove('show'), boss?2000:1500);
+}
+
+function startWave(n){
+  G.wave = n;
+  // surviving into a new wave banks the single overheal point the cap just gained
+  if(n > 1 && player.alive) setHealth(player.hp + 1);
+  G.waveActive = true;
+  G.spawnTimer = 0;          // start spawning right away
+  let total;
+  if(isBossWave(n)){
+    // spawn the boss now + a thinner pack of minions to harass alongside it
+    const boss = makeEnemy({boss:true});
+    boss.speed = enemyBaseSpeed()*0.55;
+    G.boss = boss;
+    G.bossHitFree = true;   // BUILT DIFFERENT window opens now
+    total = Math.max(2, Math.floor(enemiesForWave(n)/2));
+    elBossName.textContent = boss.name;
+    elBossBar.classList.remove('hidden');
+    bossSay('spawn', boss);
+  } else {
+    total = enemiesForWave(n);
+  }
+  // ~a fifth of the pack meets you up front; the rest arms trigger lines deeper
+  // in the level and materializes as you push toward the exit
+  const upfront = Math.max(2, Math.round(total*0.2));
+  G.pendingSpawn = upfront;
+  G.triggers = [];
+  let rest = total - upfront;
+  const fracs = [0.22, 0.42, 0.62, 0.82];
+  for(let i=0; i<fracs.length && rest>0; i++){
+    const count = Math.round(rest/(fracs.length-i));
+    rest -= count;
+    if(count > 0) G.triggers.push({ frac:fracs[i], count, fired:false });
+  }
+  updateWaveHUD();
+  showWaveBanner(n);
+  if(n>=15) unlockAch('grass');
+}
+
+function updateSpawns(dt){
+  // wave cleared: the exit is open — the next wave starts when the player reaches it
+  if(!G.waveActive){
+    if(G.exitOpen && !G.choosing){   // upgrade cards pause the trip through the exit
+      const pp = yawObj.position;
+      if(Math.hypot(pp.x-exitPos.x, pp.z-exitPos.z) < 3.2) advanceLevel();
+    }
+    return;
+  }
+  // player at the locked door mid-wave: tell them what opens it (re-arms every few seconds)
+  G.lockHint -= dt;
+  if(G.lockHint<=0 && Math.hypot(yawObj.position.x-exitPos.x, yawObj.position.z-exitPos.z) < 7){
+    G.lockHint = 4;
+    let left = G.pendingSpawn + enemies.length;
+    for(const t of G.triggers) if(!t.fired) left += t.count;
+    elWaveBanner.classList.remove('boss');
+    elWaveBanner.innerHTML = 'PORTAL LOCKED<small>KILL ALL '+left+' REMAINING ENEMIES TO OPEN THE ESCAPE</small>';
+    elWaveBanner.classList.add('show');
+    clearTimeout(showWaveBanner._t);
+    showWaveBanner._t = setTimeout(()=>elWaveBanner.classList.remove('show'), 1900);
+  }
+  // progress triggers: pushing deeper into the level releases the next pack
+  const prog = playerProgress();
+  for(const t of G.triggers){
+    if(!t.fired && prog >= t.frac){
+      t.fired = true;
+      G.pendingSpawn += t.count;
+      G.spawnTimer = 0;   // the ambush starts materializing immediately
+    }
+  }
+  // trickle this wave's enemies onto the field (pairs once it heats up)
+  G.spawnTimer -= dt;
+  if(G.pendingSpawn > 0 && G.spawnTimer <= 0){
+    const batch = Math.min(G.pendingSpawn, G.wave >= 4 ? 2 : 1);
+    for(let i=0;i<batch;i++){
+      const type = rollEnemyType(G.wave, rngSpawn());
+      const e = makeEnemy({type});
+      e.speed = enemyBaseSpeed() * (0.85+rngSpawn()*0.4) * ETYPES[type].speedMul;
+      announceType(type);
+      G.pendingSpawn--;
+    }
+    G.spawnTimer = Math.max(0.28, 0.9 - G.wave*0.04);
+  }
+  // wave cleared once every trigger has tripped and every enemy is spawned AND
+  // dead — camping the start can't end a wave, you have to walk the level
+  if(G.pendingSpawn === 0 && enemies.length === 0 && G.triggers.every(t=>t.fired)){
+    G.waveActive = false;
+    G.exitOpen = true;
+    tone(660,0.09,'square',0.12,990); tone(880,0.12,'square',0.10,1320);
+    // big shout so the player knows to run for it
+    elWaveBanner.classList.remove('boss');
+    elWaveBanner.innerHTML = 'ESCAPE PORTAL NOW OPEN!<small>FOLLOW THE WHITE ARROWS</small>';
+    elWaveBanner.classList.add('show');
+    clearTimeout(showWaveBanner._t);
+    showWaveBanner._t = setTimeout(()=>elWaveBanner.classList.remove('show'), 2200);
+  }
+}
+
+// player reached the open exit — move on to the next, bigger arena
+function advanceLevel(){
+  G.exitOpen = false;
+  // sweep leftovers so nothing strands outside the next arena's outline
+  for(const p of pickups) scene.remove(p.mesh);
+  pickups.length=0;
+  for(const s of enemyShots) scene.remove(s.mesh);
+  enemyShots.length=0;
+  for(const n of nades) scene.remove(n.mesh);
+  nades.length=0;
+  rebuildArena(G.wave + 1);
+  yawObj.position.set(spawnPos.x, EYE, spawnPos.z);
+  player.vel.set(0,0,0); player.jumpH=0; player.jumpVy=0;
+  startWave(G.wave + 1);
+}
+
+// =====================================================================
+//  PICKUPS  (health = green, ammo = yellow) — also shown on radar
+// =====================================================================
+const pickups = []; // {mesh, type:'health'|'ammo', x, z, bob, ttl}
+
+const PICKUP_TTL = 11;   // seconds a dropped pickup lingers before fading out
+const HEALTH_PACK_HP = 25;  // HP restored by a green health pack (capped at 100 in setHealth)
+function makePickup(type, x, z){
+  // keep drops inside the arena bounds
+  const dp = {x, z};
+  clampToArena(dp, 2);
+  x = dp.x; z = dp.z;
+  const g = new THREE.Group();
+  const color = type==='health' ? 0x46e06a : type==='grenade' ? 0x4b6320 : 0xffe14d;
+  g.add(cube(color, 0.5,0.5,0.5, 0,0,0));
+  // little contrasting detail so they read at a glance
+  if(type==='health'){
+    g.add(cube(0xffffff, 0.55,0.16,0.16, 0,0,0));
+    g.add(cube(0xffffff, 0.16,0.55,0.16, 0,0,0));
+  } else if(type==='grenade'){
+    g.add(cube(0x2c3a16, 0.5,0.16,0.5, 0,0.02,0));   // banding
+    g.add(cube(0x9a9a9a, 0.16,0.22,0.16, 0,0.32,0));  // pin/cap on top
+  } else {
+    g.add(cube(0x333322, 0.5,0.16,0.5, 0,0.08,0));
+  }
+  g.position.set(x, 0.8, z);
+  scene.add(g);
+  pickups.push({ mesh:g, type, x, z, bob:Math.random()*6.28, ttl:PICKUP_TTL });
+}
+// enemies drop the loot that was pre-rolled at their spawn (bosses: health + nades,
+// minions: 1 ammo : 1 health, 1-in-4 nades) — pre-rolling keeps daily runs in sync.
+function dropPickup(e){
+  const x = e.group.position.x, z = e.group.position.z;
+  makePickup(e.drop, x, z);
+  if(e.nadeDrop) makePickup('grenade', x+1.2, z+0.6);
+}
+// whatever part of a pack you couldn't carry converts to score, 1 point per unit
+function spillToScore(waste, x, z){
+  if(waste <= 0) return;
+  G.score += waste;
+  elScore.firstChild.textContent = G.score;
+  floatNumber('+'+waste+' PTS', x, 2.0, z, false);
+}
+function collectPickup(p){
+  G.pickupCount++;
+  if(G.pickupCount>=15) unlockAch('tax');
+  if(p.type==='health'){
+    const before = player.hp;
+    setHealth(player.hp + HEALTH_PACK_HP);
+    const healed = Math.round(player.hp - before);   // actual damage restored (0 if already full)
+    spillToScore(HEALTH_PACK_HP - healed, p.x, p.z);
+    floatNumber('+'+healed+' HP', p.x, 1.4, p.z, true);
+    tone(680,0.10,'square',0.14,1040); tone(900,0.08,'sine',0.10,1300);
+  } else if(p.type==='grenade'){
+    player.grenades += 3;                 // packs of 3
+    updateNadeHUD();
+    floatNumber('+3 NADES', p.x, 1.4, p.z, true);
+    tone(360,0.10,'square',0.13,520); tone(520,0.08,'square',0.10,700);
+  } else {
+    // the box holds a full magazine — rounds still in your gun spill over as points
+    spillToScore(player.ammo, p.x, p.z);
+    player.ammo = player.maxAmmo; player.reloading = 0;
+    elAmmo.classList.remove('reload'); updateAmmoHUD();
+    floatNumber('+AMMO', p.x, 1.4, p.z, false);
+    tone(820,0.09,'square',0.13,1200);
+  }
+}
+function updatePickups(dt){
+  const pp = yawObj.position;
+  for(let i=pickups.length-1;i>=0;i--){
+    const p = pickups[i];
+    p.bob += dt*3;
+    p.mesh.position.y = 0.75 + Math.sin(p.bob)*0.18;
+    p.mesh.rotation.y += dt*1.7;
+    if(Math.hypot(pp.x-p.x, pp.z-p.z) < 1.4){
+      collectPickup(p);
+      scene.remove(p.mesh);
+      pickups.splice(i,1);
+      continue;
+    }
+    // dropped loot fades out after a while; blink for the last second
+    p.ttl -= dt;
+    if(p.ttl <= 0){
+      scene.remove(p.mesh);
+      pickups.splice(i,1);
+      continue;
+    }
+    p.mesh.visible = (p.ttl > 1) || (Math.sin(p.ttl*22) > 0);
+  }
+}
+
+// =====================================================================
+//  GRENADES  (right-click throw, explode on impact/contact)
+// =====================================================================
+const nades = []; // {mesh, vx,vy,vz, life}
+const NADE_R = 5.5;            // blast radius
+const _fwd = new THREE.Vector3();
+
+function throwGrenade(){
+  if(player.grenades<=0 || !player.alive || !G.running || G.choosing) return;
+  player.grenades--;
+  updateNadeHUD();
+  // little olive cube lobbed along the look direction with an upward arc
+  const m = new THREE.Mesh(BOX, mat(0x4b6320));
+  m.scale.set(0.28,0.28,0.28);
+  const p = yawObj.position;
+  m.position.set(p.x, p.y-0.1, p.z);
+  scene.add(m);
+  camera.getWorldDirection(_fwd);
+  const SPEED = 17;
+  nades.push({
+    mesh:m,
+    vx:_fwd.x*SPEED, vy:_fwd.y*SPEED + 4.5, vz:_fwd.z*SPEED,
+    life:4,
+  });
+  gunRecoil = Math.max(gunRecoil, 0.6);
+  tone(300,0.07,'square',0.10,180);
+}
+
+function explodeNade(x,y,z){
+  const ey = Math.max(0.4, y);
+  // fireball + sparks + smoke
+  burst(x,ey,z, 0xffd24d, 14, 7);
+  burst(x,ey,z, 0xff7a1f, 22, 6);
+  burst(x,ey,z, 0xff3322, 16, 5);
+  for(let i=0;i<10;i++){
+    const a=Math.random()*6.2832, sp=2+Math.random()*3;
+    spawnParticle(x,ey,z, 0x555555, 0.2+Math.random()*0.18,
+      Math.cos(a)*sp, 2+Math.random()*3, Math.sin(a)*sp, 0.6+Math.random()*0.4);
+  }
+  G.shake = Math.max(G.shake, 0.85);
+  G.hitstop = Math.max(G.hitstop, 0.05);
+  tone(70,0.5,'sawtooth',0.26,38); noiseBurst(0.45,0.24); tone(150,0.3,'square',0.16,50);
+
+  // area damage — obliterate minions, chunk the boss
+  const blastR = NADE_R * mods.nadeRMul;   // NUCLEAR NADES
+  for(const e of enemies.slice()){
+    if(!e.alive || e.spawning>0) continue;       // still materializing = not really here yet
+    if(e.type==='flyer' && ey < 1.2) continue;   // ground blasts can't reach the flock
+    const d = Math.hypot(e.group.position.x-x, e.group.position.z-z);
+    if(d < blastR){
+      const hp = new THREE.Vector3(); e.head.getWorldPosition(hp);
+      bloodBurst(hp.x, hp.y, hp.z, 10, 4);
+      e.hp -= e.boss ? 8 : 99;
+      if(e.hp<=0){
+        killEnemy(e, false, e.group.position);
+      } else {
+        e.hitFlash=0.12; e.stagger=0.25;
+        const dir = new THREE.Vector3().subVectors(e.group.position, new THREE.Vector3(x,0,z)).setY(0).normalize();
+        e.group.position.addScaledVector(dir, 0.6);
+      }
+    }
+  }
+}
+
+function updateNades(dt){
+  for(let i=nades.length-1;i>=0;i--){
+    const n = nades[i];
+    n.vy -= 20*dt;                       // gravity
+    n.mesh.position.x += n.vx*dt;
+    n.mesh.position.y += n.vy*dt;
+    n.mesh.position.z += n.vz*dt;
+    n.mesh.rotation.x += dt*9; n.mesh.rotation.y += dt*7;
+    n.life -= dt;
+
+    const px=n.mesh.position.x, py=n.mesh.position.y, pz=n.mesh.position.z;
+    let boom = false;
+    if(py <= 0.25) boom = true;                              // ground
+    else if(outsideArena(px, pz)) boom = true; // arena wall
+    else if(n.life <= 0) boom = true;                        // fuse
+    else {
+      // contact with any enemy
+      for(const e of enemies){
+        if(!e.alive) continue;
+        const ep = e.group.position;
+        if(Math.hypot(px-ep.x, pz-ep.z) < (e.radius+0.4) && py < 2.6*e.group.scale.x){ boom=true; break; }
+      }
+      // contact with an obstacle block
+      if(!boom){
+        for(const o of obstacles){
+          if(Math.hypot(px-o.x, pz-o.z) < o.r+0.3 && py < 3.4){ boom=true; break; }
+        }
+      }
+    }
+    if(boom){
+      explodeNade(px, py, pz);
+      scene.remove(n.mesh);
+      nades.splice(i,1);
+    }
+  }
+}
+
+// =====================================================================
+//  ENEMY SHOTS  (spitter projectiles — slow enough to strafe-dodge)
+// =====================================================================
+const enemyShots = []; // {mesh, vx,vy,vz, life}
+const ESHOT_SPEED = 9.6;
+
+function spitAt(e){
+  const m = new THREE.Mesh(BOX, mat(0x9dff2e));
+  m.scale.set(0.26,0.26,0.26);
+  const hp = new THREE.Vector3();
+  e.head.getWorldPosition(hp);
+  m.position.copy(hp);
+  scene.add(m);
+  const pp = yawObj.position;
+  const dir = new THREE.Vector3(pp.x-hp.x, (EYE-0.2)-hp.y, pp.z-hp.z).normalize();
+  enemyShots.push({ mesh:m, vx:dir.x*ESHOT_SPEED, vy:dir.y*ESHOT_SPEED, vz:dir.z*ESHOT_SPEED, life:3 });
+  tone(760,0.08,'square',0.09,320);
+}
+
+function updateEnemyShots(dt){
+  const pp = yawObj.position;
+  for(let i=enemyShots.length-1;i>=0;i--){
+    const s = enemyShots[i];
+    const m = s.mesh;
+    m.position.x += s.vx*dt;
+    m.position.y += s.vy*dt;
+    m.position.z += s.vz*dt;
+    m.rotation.x += dt*7; m.rotation.y += dt*5;
+    s.life -= dt;
+    // full 3D distance to the player's eye
+    const d = Math.hypot(m.position.x-pp.x, m.position.y-pp.y, m.position.z-pp.z);
+    if(d < 0.75){
+      playerHit(10);
+      burst(m.position.x, m.position.y, m.position.z, 0x9dff2e, 8, 3);
+      scene.remove(m); enemyShots.splice(i,1);
+      continue;
+    }
+    if(s.life<=0 || m.position.y < 0.05 || outsideArena(m.position.x, m.position.z)){
+      burst(m.position.x, Math.max(0.2,m.position.y), m.position.z, 0x6fc832, 5, 2);
+      scene.remove(m); enemyShots.splice(i,1);
+    }
+  }
+}
+
+// =====================================================================
+//  RELOAD
+// =====================================================================
+function startReload(){
+  if(player.reloading>0 || player.ammo===player.maxAmmo || !player.alive) return;
+  player.reloading = RELOAD_TIME * mods.reloadMul;
+  elAmmo.classList.add('reload');
+  updateAmmoHUD();
+  tone(230,0.10,'square',0.10,150);
+}
+function updateAmmoHUD(){
+  elAmmoN.textContent = player.reloading>0 ? '— —' : player.ammo;
+}
+function updateAmmoLabel(){
+  elAmmoLabel.textContent = player.dblshotgun ? 'DBL SHOTGUN' : player.shotgun ? 'SHOTGUN' : 'AMMO';
+}
+function updateNadeHUD(){
+  elNadeN.textContent = player.grenades;
+  elNade.classList.toggle('empty', player.grenades<=0);
+}
+function updateMuteHUD(){
+  elMuteInd.classList.toggle('on', G.muted);
+}
+function toggleMute(){
+  G.muted = !G.muted;
+  lsSet('brainrot_muted', G.muted ? '1' : '0');
+  updateMuteHUD();
+  if(!G.muted){ audioInit(); tone(660,0.08,'square',0.12,900); } // little blip to confirm sound is back
+}
+function updateSprintHUD(){
+  // sprint never exhausts now — the bar just lights up while you're running
+  const on = keys['ShiftLeft'] || keys['ShiftRight'] || capsSprint || touchSprint;
+  elSprint.classList.remove('cooling');
+  elSprintFill.style.width = on ? '100%' : '35%';
+}
+
+// =====================================================================
+//  RADAR  (top-down minimap in the exact shape of the current arena —
+//  the whole number is always visible, north-up, player wedge rotates)
+// =====================================================================
+function drawRadar(){
+  const ctx=rctx, S=RAD_SIZE;
+  ctx.clearRect(0,0,S,S);
+  // fit the whole shape into the canvas, centered, aspect preserved
+  const s = (S - RAD_PAD*2) / Math.max(boundsW, boundsH);
+  const ox = (S - boundsW*s)/2, oy = (S - boundsH*s)/2;
+  const mx = x => ox + (x-originX)*s;
+  const my = z => oy + (z-originZ)*s;
+  // the map itself: one rect per member cell — the radar IS the level's shape
+  ctx.fillStyle='rgba(8,22,14,0.78)';
+  const w = CELL*s;
+  for(const cl of cellList) ctx.fillRect(mx(originX+cl.c*CELL), my(originZ+cl.r*CELL), w+0.5, w+0.5);
+  // outline every stroke edge that faces a void so the layout reads crisply
+  ctx.strokeStyle='rgba(120,210,150,0.55)'; ctx.lineWidth=1;
+  ctx.beginPath();
+  for(const cl of cellList){
+    const x0=mx(originX+cl.c*CELL), z0=my(originZ+cl.r*CELL);
+    if(!isMember(cl.c, cl.r-1)){ ctx.moveTo(x0, z0);   ctx.lineTo(x0+w, z0); }
+    if(!isMember(cl.c, cl.r+1)){ ctx.moveTo(x0, z0+w); ctx.lineTo(x0+w, z0+w); }
+    if(!isMember(cl.c-1, cl.r)){ ctx.moveTo(x0, z0);   ctx.lineTo(x0, z0+w); }
+    if(!isMember(cl.c+1, cl.r)){ ctx.moveTo(x0+w, z0); ctx.lineTo(x0+w, z0+w); }
+  }
+  ctx.stroke();
+
+  function plot(ex,ez,color,size,ring){
+    ctx.beginPath(); ctx.arc(mx(ex),my(ez),size,0,6.2832);
+    if(ring){ ctx.strokeStyle=color; ctx.lineWidth=2; ctx.stroke(); }   // hollow = airborne
+    else { ctx.fillStyle=color; ctx.fill(); }
+  }
+  // exit marker — hollow ring, green once it's open
+  plot(exitPos.x, exitPos.z, G.exitOpen?'#35e05a':'#8a939b', 5, true);
+  for(const p of pickups) plot(p.x, p.z, p.type==='health'?'#46e06a':p.type==='grenade'?'#9bd34a':'#ffe14d', 2.6);
+  for(const e of enemies){ if(e.alive) plot(e.group.position.x, e.group.position.z,
+    e.boss?'#ffd24d': e.type==='flyer'?'#ff9e2c':'#ff3b3b',
+    e.boss?5: e.type==='flyer'?4:3,
+    e.type==='flyer'); }
+
+  // player: white wedge at their map position, rotated to their facing
+  // (world forward is (-sin yaw, -cos yaw), which is a -yaw canvas rotation)
+  ctx.save();
+  ctx.translate(mx(yawObj.position.x), my(yawObj.position.z));
+  ctx.rotate(-yaw);
+  ctx.fillStyle='rgba(255,255,255,0.95)';
+  ctx.beginPath(); ctx.moveTo(0,-7); ctx.lineTo(-4.5,4); ctx.lineTo(4.5,4); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+// =====================================================================
+//  GAME LIFECYCLE
+// =====================================================================
+function startGame(){
+  G.running = true;
+  // first-ever run: kick off wave 1 (loot now comes from kills, not random spawns)
+  if(G.wave===0 && enemies.length===0){
+    yawObj.position.set(spawnPos.x, EYE, spawnPos.z);
+    startWave(1);
+  }
+}
+
+function resetGame(){
+  // clear enemies + particles + pickups
+  for(const e of enemies) scene.remove(e.group);
+  enemies.length=0;
+  for(const p of particles) scene.remove(p.mesh);
+  particles.length=0;
+  for(const p of pickups) scene.remove(p.mesh);
+  pickups.length=0;
+  for(const n of nades) scene.remove(n.mesh);
+  nades.length=0;
+  for(const s of enemyShots) scene.remove(s.mesh);
+  enemyShots.length=0;
+  for(const s of speeches){ if(s.spr.parent) s.spr.parent.remove(s.spr); }
+  speeches.length=0;
+  // reset state
+  G.score=0; G.combo=1; G.comboTimer=0; G.bestCombo=1; G.shake=0; G.hitstop=0;
+  G.spawnTimer=0; G.fireCd=0; G.running=true;
+  G.wave=0; G.waveActive=false; G.pendingSpawn=0; G.exitOpen=false; G.lockHint=0; G.boss=null; G.triggers=[];
+  // fresh cover-scatter seed for the run (daily players all share one), back to the "1" arena
+  G.arenaSeed = G.daily ? 'daily-'+dailyStr() : String((Math.random()*1e9)|0);
+  rebuildArena(1);
+  G.choosing=false; choiceOffers=null; elChoice.classList.add('hidden');
+  G.bossesDown=0; G.critCount=0; G.pickupCount=0; G.bossHitFree=true;
+  mods = freshMods();
+  player.maxAmmo = 24;
+  // seed (or unseed) the spawn stream for this run
+  rngSpawn = G.daily ? seededRng('jbr-daily-'+dailyStr()) : Math.random;
+  nameIdx = 0;   // names replay in the same order too
+  G.awaitingInitials=false; elEntry.classList.add('hidden');
+  elWaveBanner.classList.remove('show','boss');
+  elBossBar.classList.add('hidden');
+  player.hp=100; player.alive=true; player.vel.set(0,0,0);
+  touchSprint=false;
+  player.ammo=player.maxAmmo; player.reloading=0; player.grenades=0;
+  player.shotgun=false; player.dblshotgun=false;
+  player.lives=START_LIVES; updateLivesHUD();
+  player.invuln=0; elInvuln.classList.remove('on');
+  setWeaponModel();
+  elAmmo.classList.remove('reload'); updateAmmoHUD(); updateAmmoLabel(); updateNadeHUD();
+  yawObj.position.set(spawnPos.x, EYE, spawnPos.z); yaw=0; pitch=0;
+  player.jumpH=0; player.jumpVy=0;
+  elScore.firstChild.textContent='0';
+  setHealth(100);
+  breakCombo();
+  overOv.classList.add('hidden');
+  startOv.classList.add('hidden');
+  // loot now drops from kills — just launch wave 1
+  startWave(1);
+}
+
+function gameOver(){
+  player.alive=false;
+  G.running=false;
+  G.overAt = performance.now();
+  resetTouchState();
+  G.choosing=false; choiceOffers=null; elChoice.classList.add('hidden');
+  if(G.wave<=1) unlockAch('npc');
+  renderAchRow(elOverAch);
+  player.invuln=0; elInvuln.classList.remove('on');
+  SFX.over();
+  if(G.score>G.best){ G.best=G.score; lsSet('brainrot_best', G.best); }
+  if(G.bestCombo>Number(lsGet('brainrot_bestcombo',1))) lsSet('brainrot_bestcombo', G.bestCombo);
+  if(G.wave>G.bestWave){ G.bestWave=G.wave; lsSet('brainrot_bestwave', G.bestWave); }
+  elBestSmall.textContent='BEST '+G.best;
+  elLowhp.classList.remove('on');
+  document.getElementById('o-score').textContent=G.score;
+  document.getElementById('o-wave').textContent=G.wave;
+  document.getElementById('o-combo').textContent='x'+G.bestCombo;
+  // daily mode: banked best-of-day, share button, and an exit back to classic
+  if(G.daily){
+    const key = 'brainrot_daily_'+dailyStr();
+    const prev = Number(lsGet(key, 0));
+    if(G.score > prev) lsSet(key, G.score);
+    elDailyResult.textContent = '🧠 DAILY #'+dailyNum()+' — '
+      + (G.score > prev ? 'NEW BEST TODAY!' : 'BEST TODAY: '+Math.max(prev, G.score));
+    elDailyResult.style.display = '';
+    elShareBtn.style.display = '';
+    elClassicBtn.style.display = '';
+  } else {
+    elDailyResult.style.display = 'none';
+    elShareBtn.style.display = 'none';
+    elClassicBtn.style.display = 'none';
+  }
+  // high-score board: prompt for initials if this run cracks the top 10
+  if(scoreQualifies(G.score)){
+    G.awaitingInitials = true;
+    initials = '';
+    updateInitialsUI();
+    elInInput.value = '';
+    elInSave.classList.toggle('hidden', !touchMode);
+    elEntry.classList.remove('hidden');
+    elOverBlink.classList.add('hidden');   // hold off "click to restart" until initials are saved
+    renderBoard(-1);
+  } else {
+    G.awaitingInitials = false;
+    elEntry.classList.add('hidden');
+    elOverBlink.classList.remove('hidden');
+    renderBoard(-1);
+  }
+  overOv.classList.remove('hidden');
+  elBossBar.classList.add('hidden');
+  elWaveBanner.classList.remove('show');
+  if(document.pointerLockElement) document.exitPointerLock();
+}
+
+// =====================================================================
+//  COLLISION (player vs obstacles + arena bounds)
+// =====================================================================
+function collide(pos, radius=0.5){
+  // arena bounds — irregular blob edge
+  clampToArena(pos, 1.5);
+  // obstacles (circle push-out) — radius lets bigger bodies (bosses) clear the cover
+  for(const o of obstacles){
+    const dx=pos.x-o.x, dz=pos.z-o.z;
+    const d=Math.hypot(dx,dz), min=o.r+radius;
+    if(d<min && d>0.0001){
+      pos.x = o.x + dx/d*min;
+      pos.z = o.z + dz/d*min;
+    }
+  }
+}
+
+// =====================================================================
+//  UPDATE LOOP
+// =====================================================================
+let last = performance.now();
+let bobPhase=0;
+
+function update(dt){
+  // ----- hitstop freezes world sim (but not rendering) -----
+  if(G.hitstop>0){ G.hitstop-=dt; if(G.hitstop<0) G.hitstop=0; dt = 0; }
+  // ----- upgrade choice freezes the sim the same way (you can still look around) -----
+  if(G.choosing) dt = 0;
+
+  // ----- player movement -----
+  if(G.running){
+    let mx=0, mz=0;
+    if(keys['KeyW']) mz-=1;
+    if(keys['KeyS']) mz+=1;
+    if(keys['KeyA']) mx-=1;
+    if(keys['KeyD']) mx+=1;
+    mx += touchMove.x; mz += touchMove.z;
+    const len=Math.hypot(mx,mz);
+    if(len>1){ mx/=len; mz/=len; }   // only clamp overshoot so partial joystick pushes stay analog
+
+    // held FIRE button auto-fires as fast as the cooldown allows
+    if(touchFiring) shoot();
+
+    // post-revive invulnerability countdown
+    if(player.invuln>0){
+      player.invuln-=dt;
+      if(player.invuln<=0){ player.invuln=0; elInvuln.classList.remove('on'); }
+    }
+    const sprinting = keys['ShiftLeft'] || keys['ShiftRight'] || capsSprint || touchSprint;
+    const spd = player.speed * (sprinting ? player.sprintMul + mods.sprintPlus : 1);
+
+    // desired velocity in world space (relative to yaw)
+    const sinY=Math.sin(yaw), cosY=Math.cos(yaw);
+    const wantX = (mx*cosY + mz*sinY) * spd;
+    const wantZ = (mz*cosY - mx*sinY) * spd;
+
+    // snappy accel + slight momentum
+    const accel = (len>0?22:16);
+    player.vel.x += (wantX-player.vel.x)*Math.min(1, accel*dt);
+    player.vel.z += (wantZ-player.vel.z)*Math.min(1, accel*dt);
+
+    const np = yawObj.position.clone();
+    np.x += player.vel.x*dt;
+    np.z += player.vel.z*dt;
+    collide(np);
+    yawObj.position.copy(np);
+    // spacebar jump — ballistic hop; the bounds clamp above still applies midair,
+    // so there is no leaving the arena and the ground is everywhere to land on
+    if(player.jumpH>0 || player.jumpVy>0){
+      player.jumpVy -= 22*dt;
+      player.jumpH = Math.max(0, player.jumpH + player.jumpVy*dt);
+      if(player.jumpH===0 && player.jumpVy<0) player.jumpVy = 0;
+    }
+    yawObj.position.y = EYE + player.jumpH;
+
+    // viewmodel bob
+    const moving = Math.hypot(player.vel.x,player.vel.z);
+    bobPhase += dt*(moving*1.6+2);
+  }
+
+  // ----- apply look -----
+  yawObj.rotation.y = yaw;
+  pitchObj.rotation.x = pitch;
+
+  // ----- gun recoil + sway + bob -----
+  gunRecoil += (0-gunRecoil)*Math.min(1, 12*dt);
+  const moveAmt = Math.hypot(player.vel.x, player.vel.z)*0.01;
+  const bobX = Math.cos(bobPhase)*0.012*(1+moveAmt*40);
+  const bobY = Math.abs(Math.sin(bobPhase))*0.016*(1+moveAmt*40);
+  gun.position.x = 0.32 + Math.sin(bobPhase*0.5)*0.006 + bobX;
+  gun.position.y = -0.30 + bobY - gunRecoil*0.04;
+  gun.position.z = -0.6 + gunRecoil*0.12;
+  gun.rotation.x = gunRecoil*0.5 + Math.sin(bobPhase*0.5)*0.01;
+  flashMat.opacity *= 0.78;
+  if(flashMat.opacity<0.02) flashMat.opacity=0;
+  muzzle.scale.setScalar(0.3 + flashMat.opacity*0.5);
+
+  // ----- fire cooldown / reload / combo decay -----
+  if(G.fireCd>0) G.fireCd-=dt;
+  if(player.reloading>0){
+    player.reloading-=dt;
+    if(player.reloading<=0){
+      player.reloading=0; player.ammo=player.maxAmmo;
+      elAmmo.classList.remove('reload'); updateAmmoHUD();
+      tone(640,0.08,'square',0.12,900);
+    }
+  }
+  if(G.running && G.combo>1){
+    G.comboTimer -= dt;
+    elComboBar.style.width = Math.max(0,(G.comboTimer/G.comboWindow))*100+'%';
+    if(G.comboTimer<=0) breakCombo();
+  }
+
+  // ----- enemies -----
+  if(G.running){
+    updateSpawns(dt);
+    updatePickups(dt);
+    updateNades(dt);
+    updateEnemyShots(dt);
+    updateRemainHUD();
+    updateSprintHUD();
+    const pp = yawObj.position;
+    // refresh the corridor flow field a few times a second as the player moves
+    flowTimer -= dt;
+    if(flowTimer <= 0){ flowTimer = 0.15; rebuildFlow(); }
+    for(const e of enemies){
+      if(!e.alive) continue;
+      const g=e.group;
+      // materialize-in: grow from a spark to full size with a shimmer of
+      // particles; not part of the world (no moving/attacking/colliding) yet
+      if(e.spawning > 0){
+        e.spawning -= dt;
+        const t = Math.min(1, 1 - e.spawning/0.9);
+        g.scale.setScalar(e.baseScale * Math.max(0.05, t*t));
+        if(Math.random() < 0.6){
+          spawnParticle(g.position.x+(Math.random()-0.5)*1.4, Math.random()*2.2*e.baseScale, g.position.z+(Math.random()-0.5)*1.4,
+            e.color, 0.12, (Math.random()-0.5), 1.5+Math.random()*2, (Math.random()-0.5), 0.35);
+        }
+        if(e.spawning <= 0) g.scale.setScalar(e.baseScale);
+        continue;
+      }
+      const dx=pp.x-g.position.x, dz=pp.z-g.position.z;
+      const dist=Math.hypot(dx,dz);
+      const dirX=dx/(dist||1), dirZ=dz/(dist||1);
+
+      // face the player
+      const targetYaw = Math.atan2(dirX, dirZ);
+      g.rotation.y = targetYaw;
+
+      // waddle bob + lunge when close
+      e.bob += dt*(6 + e.speed);
+      let sp = e.speed;
+      if(dist<6){ e.lunge = Math.min(1, e.lunge+dt*2); sp *= 1+e.lunge*0.6; }
+      else { e.lunge = Math.max(0, e.lunge-dt); }
+
+      if(e.stun>0){ e.stun-=dt; sp = 0; }         // headshot stun: dead stop
+      else if(e.stagger>0){ e.stagger-=dt; sp*=0.25; }
+      if(e.attackCd>0) e.attackCd-=dt;
+
+      // RATIO'D: fire ticks 1 hp every half second while it lasts
+      if(e.burn > 0){
+        e.burn -= dt;
+        // constant flame stream off the body so burning reads at a glance
+        e.flameTick = (e.flameTick||0) - dt;
+        if(e.flameTick <= 0){
+          e.flameTick = 0.06;
+          const fx=(Math.random()-0.5)*0.9*g.scale.x, fz=(Math.random()-0.5)*0.9*g.scale.x;
+          spawnParticle(g.position.x+fx, (0.5+Math.random()*1.5)*g.scale.x, g.position.z+fz,
+            Math.random()<0.5?0xff7a1f:0xffc93c, 0.14+Math.random()*0.1,
+            (Math.random()-0.5)*1.5, 2.8+Math.random()*2.5, (Math.random()-0.5)*1.5, 0.4);
+        }
+        e.burnTick = (e.burnTick||0) - dt;
+        if(e.burnTick <= 0){
+          e.burnTick = 0.5;
+          e.hp -= 1;
+          spawnParticle(g.position.x, 1.4*g.scale.x, g.position.z, 0xff7a1f, 0.15,
+            (Math.random()-0.5)*2, 2.5+Math.random()*2, (Math.random()-0.5)*2, 0.45);
+          if(e.hp <= 0){
+            killEnemy(e, false, g.position);
+            continue;
+          }
+        }
+        // fire just went out — hand the body colors back
+        if(e.burn <= 0){ e.torso.material=mat(e.color); e.head.material=mat(e.color2); }
+      }
+
+      // spitters hold their range and lob goo instead of charging
+      if(e.type==='spitter'){
+        e.lunge = 0;
+        if(e.attackCd<=0 && dist < 22 && e.stun<=0){ spitAt(e); e.attackCd = 2.2; }
+        if(dist < 10) sp = 0;
+      }
+
+      // move toward player, routing through the number's corridors when the
+      // player is in a different cell, and steering around cover blocks
+      // (flyers just glide straight over everything)
+      let mvX = dirX, mvZ = dirZ;
+      if(e.type!=='flyer'){
+        const [ec, er] = cellOf(g.position.x, g.position.z);
+        const [plc, plr] = cellOf(pp.x, pp.z);
+        if(!(ec===plc && er===plr)){
+          const fn = flowNext[ec+','+er];
+          if(fn){
+            const fd = Math.hypot(fn.x-g.position.x, fn.z-g.position.z) || 1;
+            mvX = (fn.x-g.position.x)/fd;
+            mvZ = (fn.z-g.position.z)/fd;
+          }
+        }
+        let near=null, nearD=Infinity;
+        for(const o of obstacles){
+          const od = Math.hypot(g.position.x-o.x, g.position.z-o.z);
+          if(od < o.r + e.radius + 0.5 && od < nearD){ near=o; nearD=od; }
+        }
+        if(near && nearD>0.0001){
+          const nx=(g.position.x-near.x)/nearD, nz=(g.position.z-near.z)/nearD; // outward normal
+          const hx=mvX, hz=mvZ;               // heading before the slide
+          if(mvX*nx + mvZ*nz < 0){            // we're heading into the block — slide along it instead
+            let tx=-nz, tz=nx;                // tangent; flip to whichever side faces the heading
+            if(tx*hx + tz*hz < 0){ tx=nz; tz=-nx; }
+            mvX = tx + nx*0.2; mvZ = tz + nz*0.2; // mostly tangential, slight outward bias
+            const l=Math.hypot(mvX,mvZ)||1; mvX/=l; mvZ/=l;
+          }
+        }
+      }
+      g.position.x += mvX*sp*dt;
+      g.position.z += mvZ*sp*dt;
+      // body-shot knockback: impulse shoves them away from the player, decaying fast
+      if(e.kb>0.05){
+        g.position.x += e.kbX*e.kb*dt;
+        g.position.z += e.kbZ*e.kb*dt;
+        e.kb *= Math.exp(-8*dt);
+      } else e.kb = 0;
+      if(e.type==='flyer'){
+        clampToBounds(g.position, 1.5);  // flyers glide over voids, but stay over the number
+      } else {
+        collide(g.position, e.radius); // hard backstop: never end up inside a cover block
+      }
+
+      // waddle: rock side to side + bob up (flyers hover instead)
+      g.rotation.z = Math.sin(e.bob)*0.12;
+      g.position.y = e.type==='flyer' ? 1.3 + Math.sin(e.bob*0.7)*0.5
+                                      : Math.abs(Math.sin(e.bob*1.0))*0.12;
+
+      // animate legs (or flap wings) — knockback turns the waddle into a wild flail
+      const swing=Math.sin(e.bob)*0.5;
+      if(e.wingL){ e.wingL.rotation.z = 0.25 + swing*0.8; e.wingR.rotation.z = -0.25 - swing*0.8; }
+      if(e.kb>0.5){
+        e.flail += dt*26;
+        const amp = Math.min(1, e.kb/6);   // flail eases off as the shove decays
+        e.armL.rotation.x = Math.sin(e.flail)*2.4*amp;
+        e.armR.rotation.x = Math.sin(e.flail+2.1)*2.4*amp;
+        e.armL.rotation.z =  (0.9 + Math.sin(e.flail*0.8)*0.5)*amp;
+        e.armR.rotation.z = -(0.9 + Math.cos(e.flail*0.9)*0.5)*amp;
+        if(e.legL){ e.legL.rotation.x = Math.sin(e.flail*1.3)*1.4*amp; e.legR.rotation.x = Math.cos(e.flail*1.1)*1.4*amp; }
+      } else {
+        e.armL.rotation.x = -swing*0.6; e.armR.rotation.x = swing*0.6;
+        e.armL.rotation.z = 0; e.armR.rotation.z = 0;
+        if(e.legL){ e.legL.rotation.x = swing; e.legR.rotation.x = -swing; }
+      }
+
+      // hit flash (whiten)
+      if(e.hitFlash>0){
+        e.hitFlash-=dt;
+        e.torso.material = mat(0xffffff);
+        e.head.material = mat(0xffffff);
+        if(e.hitFlash<=0){ e.torso.material=mat(e.color); e.head.material=mat(e.color2); }
+      } else if(e.burn>0){
+        // burning bodies flicker fire-orange between damage ticks
+        const on = Math.sin(e.bob*14) > -0.2;
+        e.torso.material = mat(on?0xff7a1f:e.color);
+        e.head.material  = mat(on?0xffb03c:e.color2);
+      }
+      // kamikaze fuse strobe once it's in blast-run range
+      if(e.type==='kamikaze' && e.hitFlash<=0 && e.burn<=0){
+        const on = dist<5 && Math.sin(e.bob*6) > 0;
+        e.torso.material = mat(on?0xffffff:e.color);
+        e.head.material  = mat(on?0xffffff:e.color2);
+      }
+
+      // attack
+      if(e.boss){
+        // bosses don't pop on contact — they pummel on a cooldown and keep coming
+        if(dist < 2.8 && e.attackCd<=0){
+          playerHit(26);
+          e.attackCd = 1.1;
+          e.lunge = 1;
+          burst(g.position.x, 1.6, g.position.z, 0xff3b3b, 12, 4);
+          G.shake = Math.max(G.shake, 0.6);
+        }
+      } else if(e.type==='brute'){
+        // brutes swing like a mini-boss: heavy cooldown hits, no self-destruct
+        if(dist < 2.2 && e.attackCd<=0){
+          playerHit(30);
+          e.attackCd = 1.4;
+          e.lunge = 1;
+          burst(g.position.x, 1.6, g.position.z, 0xaab0bb, 10, 4);
+          G.shake = Math.max(G.shake, 0.5);
+        }
+      } else if(e.type==='kamikaze' && dist < 2){
+        // boom — no loot, no score, just regret
+        burst(g.position.x, 1.2, g.position.z, 0xff7a1f, 18, 6);
+        burst(g.position.x, 1.2, g.position.z, 0xe23b3b, 12, 5);
+        noiseBurst(0.25, 0.18); tone(90,0.3,'sawtooth',0.2,45);
+        G.shake = Math.max(G.shake, 0.7);
+        playerHit(22);
+        e.alive=false;
+        scene.remove(g);
+        const idx=enemies.indexOf(e); if(idx>=0) enemies.splice(idx,1);
+      } else if(dist < 1.5){
+        playerHit(16);
+        // pop the enemy on contact
+        burst(g.position.x,1.2,g.position.z,e.color,8,3);
+        e.alive=false;
+        scene.remove(g);
+        const idx=enemies.indexOf(e); if(idx>=0) enemies.splice(idx,1);
+      }
+    }
+
+    // boss health bar tracks the live boss
+    if(G.boss && G.boss.alive){
+      elBossFill.style.width = Math.max(0, G.boss.hp/G.boss.maxHp)*100 + '%';
+    }
+  }
+
+  // ----- exit beacon: white arrows cascade down; portal sheet shows lock state -----
+  exitBob += dt;
+  const drop = (exitBob*(G.exitOpen?7:2.5)) % ARROW_STEP;   // faster flow once open
+  for(let i=0; i<exitArrows.length; i++) exitArrows[i].position.y = ARROW_BASE + i*ARROW_STEP - drop;
+  exitArrowMat.opacity = G.exitOpen ? 0.95 : 0.45;
+  portalGlowMat.color.setHex(G.exitOpen ? 0x35e05a : 0x8a939b);
+  portalGlowMat.opacity = G.exitOpen ? 0.5 + Math.sin(exitBob*6)*0.18 : 0.25;
+
+  // ----- speech bubbles -----
+  updateSpeeches(dt);
+
+  // ----- particles -----
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.life-=dt;
+    if(p.life<=0){ scene.remove(p.mesh); particles.splice(i,1); continue; }
+    p.vy -= 9.8*dt*(p.big?1:1.4);
+    p.mesh.position.x += p.vx*dt;
+    p.mesh.position.y += p.vy*dt;
+    p.mesh.position.z += p.vz*dt;
+    if(p.mesh.position.y<0.08){ p.mesh.position.y=0.08; p.vy*=-0.4; p.vx*=0.6; p.vz*=0.6; }
+    p.mesh.rotation.x += p.rot; p.mesh.rotation.y += p.rot*0.7;
+    // fade by shrinking near end
+    const t=p.life/p.max;
+    if(t<0.4){ const s=Math.max(0.01,t/0.4); p.mesh.scale.multiplyScalar(0.92); }
+  }
+
+  // ----- camera shake -----
+  if(G.shake>0){
+    G.shake = Math.max(0, G.shake-dt*2.2);
+    const s=G.shake;
+    camera.position.x = (Math.random()-0.5)*s*0.5;
+    camera.position.y = (Math.random()-0.5)*s*0.5;
+    camera.position.z = (Math.random()-0.5)*s*0.3;
+  } else {
+    camera.position.set(0,0,0);
+  }
+}
+
+function loop(now){
+  let dt = (now-last)/1000;
+  last = now;
+  if(dt>0.05) dt=0.05;   // clamp big frame gaps
+  update(dt);
+  renderer.render(scene, camera);
+  drawRadar();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// ---------- resize ----------
+window.addEventListener('resize', ()=>{
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// build the wave-1 arena as the start-screen backdrop
+rebuildArena(1);
+yawObj.position.set(spawnPos.x, EYE, spawnPos.z);
+
+// init HUD
+setHealth(100);
+updateLivesHUD();
+updateAmmoHUD();
+updateNadeHUD();
+updateMuteHUD();
+updateRemainHUD();
+updateSprintHUD();
+renderStartBoard();
+if(HAS_COARSE) activateTouchMode();
+
+})();
+</script>
+</body>
+</html>
