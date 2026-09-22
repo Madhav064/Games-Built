@@ -44,7 +44,7 @@ export const COSMETICS: CosmeticItem[] = [
 
   // === EMOTES ===
   { id: 'emote_smile', name: 'Smile Emote', type: 'emote', price: 0, preview: '😊', unlocked: true },
-  { id: 'emote_gg', name: '\"GG\" Emote', type: 'emote', price: 50, preview: '🤝', unlocked: false },
+  { id: 'emote_gg', name: '"GG" Emote', type: 'emote', price: 50, preview: '🤝', unlocked: false },
   { id: 'emote_fire', name: 'Fire Emote', type: 'emote', price: 50, preview: '🔥', unlocked: false },
   { id: 'emote_heart', name: 'Heart Emote', type: 'emote', price: 50, preview: '❤️', unlocked: false },
   { id: 'emote_thumbs_up', name: 'Thumbs Up', type: 'emote', price: 50, preview: '👍', unlocked: false },
