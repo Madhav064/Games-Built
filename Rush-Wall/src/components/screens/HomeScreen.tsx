@@ -2,15 +2,25 @@
 // Rush Wall — Home Screen
 // ============================================================
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useGame } from '../../context/GameContext';
 import { GameMode, AIDifficulty } from '../../game/types';
 import { soundManager } from '../../audio/soundManager';
+import { getPlayerRank } from '../../sdk/leaderboard';
 
 export function HomeScreen() {
   const { state, dispatch, startGame, toggleTheme } = useGame();
   const [showDifficulty, setShowDifficulty] = useState(false);
+  const [onlineWins, setOnlineWins] = useState(0);
+  const [onlineLosses, setOnlineLosses] = useState(0);
   const { profile } = state;
+
+  useEffect(() => {
+    getPlayerRank().then(({ onlineWins: w, onlineLosses: l }) => {
+      setOnlineWins(w);
+      setOnlineLosses(l);
+    }).catch(() => {});
+  }, []);
 
   const handleAIClick = () => {
     soundManager.init();
@@ -29,7 +39,7 @@ export function HomeScreen() {
     startGame(GameMode.Local);
   };
 
-  const navigateTo = (screen: 'shop' | 'profile' | 'howToPlay') => {
+  const navigateTo = (screen: 'shop' | 'profile' | 'howToPlay' | 'matchmaking' | 'leaderboard') => {
     soundManager.init();
     soundManager.play('click');
     dispatch({ type: 'SET_SCREEN', screen });
@@ -58,10 +68,7 @@ export function HomeScreen() {
           🪙 {profile.coins}
         </div>
         <div className="badge">
-          <span className="star">⭐</span> {profile.rating}
-        </div>
-        <div className="badge">
-          🏆 {profile.gamesWon}W / {profile.gamesLost}L
+          🏆 {onlineWins}W / {onlineLosses}L
         </div>
       </div>
 
@@ -87,11 +94,11 @@ export function HomeScreen() {
               <span className="menu-card-arrow">›</span>
             </div>
 
-            <div className="menu-card" style={{ opacity: 0.5, cursor: 'not-allowed' }}>
+            <div className="menu-card" onClick={() => navigateTo('matchmaking')}>
               <div className="menu-card-icon">🌐</div>
               <div className="menu-card-text">
                 <h3>Online</h3>
-                <p>Coming soon</p>
+                <p>Play vs World</p>
               </div>
               <span className="menu-card-arrow">›</span>
             </div>
@@ -146,21 +153,6 @@ export function HomeScreen() {
         </div>
       )}
 
-      {/* Bottom Nav */}
-      <div className="home-bottom-nav">
-        <div className="nav-item active">
-          <span>🏠</span>
-          <span>Home</span>
-        </div>
-        <div className="nav-item" onClick={() => navigateTo('shop')}>
-          <span>🛍️</span>
-          <span>Shop</span>
-        </div>
-        <div className="nav-item" onClick={() => navigateTo('profile')}>
-          <span>👤</span>
-          <span>Profile</span>
-        </div>
-      </div>
     </div>
   );
 }
