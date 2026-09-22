@@ -101,6 +101,8 @@ export interface Player {
   pawnSkin: string;
   /** Cosmetic wall skin ID */
   wallSkin: string;
+  /** Profile Avatar ID */
+  avatar: string;
 }
 
 /** Full game state */
