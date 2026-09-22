@@ -131,13 +131,172 @@ export function GameBoard({ gameState, wallOrientation, isInteractive, currentPl
   }, [cellSize, boardInner]);
 
   // Get valid pawn moves
-  const validMoves = isInteractive
-    ? getAllValidPawnMoves(gameState, currentPlayerId)
-    : [];
+  const validMoves = useMemo(() => {
+    return isInteractive ? getAllValidPawnMoves(gameState, currentPlayerId) : [];
+  }, [isInteractive, gameState, currentPlayerId]);
 
   // ================================================================
   // RENDERING
   // ================================================================
+
+  // Draw a pawn
+  const drawPawn = useCallback((ctx: CanvasRenderingContext2D, pos: Position, playerId: PlayerId, isActive: boolean) => {
+    const { x, y } = getCellPos(pos.row, pos.col);
+    const cx = x + cellSize / 2;
+    const cy = y + cellSize / 2;
+    const radius = cellSize * 0.32;
+
+    const playerSkin = gameState.players[playerId].pawnSkin;
+    const defaultColor = playerId === 0 ? COLORS.pawnBlue : COLORS.pawnRed;
+    const color = getCosmeticColor(playerSkin, defaultColor);
+    const glowColor = hexToRgba(color, 0.5);
+
+    // Glow
+    if (isActive) {
+      ctx.shadowColor = glowColor;
+      ctx.shadowBlur = 18;
+    } else {
+      ctx.shadowBlur = 0;
+    }
+
+    // Gradient fill
+    const grad = ctx.createRadialGradient(cx - radius * 0.3, cy - radius * 0.3, 0, cx, cy, radius);
+    grad.addColorStop(0, '#ffffff');
+    grad.addColorStop(0.3, color);
+    grad.addColorStop(1, hexToRgba(color, 0.8)); // slightly darker edge by alpha
+
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Reflection crescent (to match CSS glossy effect)
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius * 0.75, Math.PI * 0.9, Math.PI * 1.4);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.lineWidth = radius * 0.15;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    // Border
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Draw Icon if available
+    const cosmeticItem = COSMETICS.find(c => c.id === playerSkin);
+    if (cosmeticItem?.icon) {
+      ctx.fillStyle = 'white';
+      ctx.font = `${radius * 1.2}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      // Slight vertical bump for optical alignment with emojis
+      ctx.fillText(cosmeticItem.icon, cx, cy + radius * 0.1);
+    }
+
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+  }, [getCellPos, cellSize, COLORS, gameState.players]);
+
+  // Draw a placed wall
+  const drawWall = useCallback((
+    ctx: CanvasRenderingContext2D,
+    row: number, col: number,
+    orientation: WallOrientation,
+    placedBy: PlayerId
+  ) => {
+    const playerSkin = gameState.players[placedBy].pawnSkin;
+    const defaultColor = placedBy === 0 ? COLORS.wallBlue : COLORS.wallRed;
+    const color = getCosmeticColor(playerSkin, defaultColor);
+    
+    const glowColor = hexToRgba(color, 0.4);
+    const { x: x1, y: y1 } = getCellPos(row, col);
+
+    let wx: number, wy: number, ww: number, wh: number;
+
+    if (orientation === 'horizontal') {
+      wx = x1;
+      wy = y1 + cellSize + 0.5;
+      ww = cellSize * 2 + CELL_GAP;
+      wh = CELL_GAP - 1;
+    } else {
+      wx = x1 + cellSize + 0.5;
+      wy = y1;
+      ww = CELL_GAP - 1;
+      wh = cellSize * 2 + CELL_GAP;
+    }
+
+    // Glow
+    if (glowColor !== 'transparent') {
+      ctx.shadowColor = glowColor;
+      ctx.shadowBlur = 10;
+    } else {
+      ctx.shadowBlur = 0;
+    }
+
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.roundRect(wx, wy, ww, wh, 2);
+    ctx.fill();
+
+    // Bright edge
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.8;
+    ctx.beginPath();
+    ctx.roundRect(wx, wy, ww, wh, 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+  }, [getCellPos, cellSize, COLORS, gameState.players]);
+
+  // Draw wall preview (transparent overlay)
+  const drawWallPreview = useCallback((
+    ctx: CanvasRenderingContext2D,
+    row: number, col: number,
+    orientation: WallOrientation,
+    isValid: boolean
+  ) => {
+    const { x: x1, y: y1 } = getCellPos(row, col);
+
+    let wx: number, wy: number, ww: number, wh: number;
+
+    if (orientation === 'horizontal') {
+      wx = x1;
+      wy = y1 + cellSize + 0.5;
+      ww = cellSize * 2 + CELL_GAP;
+      wh = CELL_GAP - 1;
+    } else {
+      wx = x1 + cellSize + 0.5;
+      wy = y1;
+      ww = CELL_GAP - 1;
+      wh = cellSize * 2 + CELL_GAP;
+    }
+
+    const currentPlayerSkin = gameState.players[currentPlayerId].pawnSkin;
+    const baseColor = getCosmeticColor(currentPlayerSkin, currentPlayerId === 0 ? COLORS.pawnBlue : COLORS.pawnRed);
+
+    const previewFill = hexToRgba(baseColor, 0.3);
+    const previewStroke = hexToRgba(baseColor, 0.5);
+
+    ctx.fillStyle = isValid ? previewFill : COLORS.wallInvalid;
+    ctx.beginPath();
+    ctx.roundRect(wx, wy, ww, wh, 2);
+    ctx.fill();
+
+    ctx.strokeStyle = isValid ? previewStroke : 'rgba(255, 51, 102, 0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.roundRect(wx, wy, ww, wh, 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }, [getCellPos, cellSize, currentPlayerId, COLORS, gameState.players]);
+
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -257,165 +416,7 @@ export function GameBoard({ gameState, wallOrientation, isInteractive, currentPl
     drawPawn(ctx, gameState.players[0].position, 0, gameState.currentTurn === 0);
     drawPawn(ctx, gameState.players[1].position, 1, gameState.currentTurn === 1);
 
-  }, [gameState, hoverCell, hoverWall, validMoves, mode, isInteractive, currentPlayerId, getCellPos, cellSize, COLORS]);
-
-  // Draw a pawn
-  const drawPawn = useCallback((ctx: CanvasRenderingContext2D, pos: Position, playerId: PlayerId, isActive: boolean) => {
-    const { x, y } = getCellPos(pos.row, pos.col);
-    const cx = x + cellSize / 2;
-    const cy = y + cellSize / 2;
-    const radius = cellSize * 0.32;
-
-    const playerSkin = gameState.players[playerId].pawnSkin;
-    const defaultColor = playerId === 0 ? COLORS.pawnBlue : COLORS.pawnRed;
-    const color = getCosmeticColor(playerSkin, defaultColor);
-    const glowColor = hexToRgba(color, 0.5);
-
-    // Glow
-    if (isActive) {
-      ctx.shadowColor = glowColor;
-      ctx.shadowBlur = 18;
-    } else {
-      ctx.shadowBlur = 0;
-    }
-
-    // Gradient fill
-    const grad = ctx.createRadialGradient(cx - radius * 0.3, cy - radius * 0.3, 0, cx, cy, radius);
-    grad.addColorStop(0, '#ffffff');
-    grad.addColorStop(0.3, color);
-    grad.addColorStop(1, hexToRgba(color, 0.8)); // slightly darker edge by alpha
-
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Reflection crescent (to match CSS glossy effect)
-    ctx.beginPath();
-    ctx.arc(cx, cy, radius * 0.75, Math.PI * 0.9, Math.PI * 1.4);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-    ctx.lineWidth = radius * 0.15;
-    ctx.lineCap = 'round';
-    ctx.stroke();
-
-    // Border
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // Draw Icon if available
-    const cosmeticItem = COSMETICS.find(c => c.id === playerSkin);
-    if (cosmeticItem?.icon) {
-      ctx.fillStyle = 'white';
-      ctx.font = `${radius * 1.2}px sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      // Slight vertical bump for optical alignment with emojis
-      ctx.fillText(cosmeticItem.icon, cx, cy + radius * 0.1);
-    }
-
-    ctx.shadowColor = 'transparent';
-    ctx.shadowBlur = 0;
-  }, [getCellPos, cellSize, COLORS]);
-
-  // Draw a placed wall
-  const drawWall = useCallback((
-    ctx: CanvasRenderingContext2D,
-    row: number, col: number,
-    orientation: WallOrientation,
-    placedBy: PlayerId
-  ) => {
-    const playerSkin = gameState.players[placedBy].pawnSkin;
-    const defaultColor = placedBy === 0 ? COLORS.wallBlue : COLORS.wallRed;
-    const color = getCosmeticColor(playerSkin, defaultColor);
-    
-    const glowColor = hexToRgba(color, 0.4);
-    const { x: x1, y: y1 } = getCellPos(row, col);
-
-    let wx: number, wy: number, ww: number, wh: number;
-
-    if (orientation === 'horizontal') {
-      wx = x1;
-      wy = y1 + cellSize + 0.5;
-      ww = cellSize * 2 + CELL_GAP;
-      wh = CELL_GAP - 1;
-    } else {
-      wx = x1 + cellSize + 0.5;
-      wy = y1;
-      ww = CELL_GAP - 1;
-      wh = cellSize * 2 + CELL_GAP;
-    }
-
-    // Glow
-    if (glowColor !== 'transparent') {
-      ctx.shadowColor = glowColor;
-      ctx.shadowBlur = 10;
-    } else {
-      ctx.shadowBlur = 0;
-    }
-
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.roundRect(wx, wy, ww, wh, 2);
-    ctx.fill();
-
-    // Bright edge
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1;
-    ctx.globalAlpha = 0.8;
-    ctx.beginPath();
-    ctx.roundRect(wx, wy, ww, wh, 2);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-
-    ctx.shadowColor = 'transparent';
-    ctx.shadowBlur = 0;
-  }, [getCellPos, cellSize]);
-
-  // Draw wall preview (transparent overlay)
-  const drawWallPreview = useCallback((
-    ctx: CanvasRenderingContext2D,
-    row: number, col: number,
-    orientation: WallOrientation,
-    isValid: boolean
-  ) => {
-    const { x: x1, y: y1 } = getCellPos(row, col);
-
-    let wx: number, wy: number, ww: number, wh: number;
-
-    if (orientation === 'horizontal') {
-      wx = x1;
-      wy = y1 + cellSize + 0.5;
-      ww = cellSize * 2 + CELL_GAP;
-      wh = CELL_GAP - 1;
-    } else {
-      wx = x1 + cellSize + 0.5;
-      wy = y1;
-      ww = CELL_GAP - 1;
-      wh = cellSize * 2 + CELL_GAP;
-    }
-
-    const currentPlayerSkin = gameState.players[currentPlayerId].pawnSkin;
-    const baseColor = getCosmeticColor(currentPlayerSkin, currentPlayerId === 0 ? COLORS.pawnBlue : COLORS.pawnRed);
-
-    const previewFill = hexToRgba(baseColor, 0.3);
-    const previewStroke = hexToRgba(baseColor, 0.5);
-
-    ctx.fillStyle = isValid ? previewFill : COLORS.wallInvalid;
-    ctx.beginPath();
-    ctx.roundRect(wx, wy, ww, wh, 2);
-    ctx.fill();
-
-    ctx.strokeStyle = isValid ? previewStroke : 'rgba(255, 51, 102, 0.5)';
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([4, 3]);
-    ctx.beginPath();
-    ctx.roundRect(wx, wy, ww, wh, 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
-  }, [getCellPos, cellSize, currentPlayerId, COLORS]);
+  }, [gameState, hoverCell, hoverWall, validMoves, mode, isInteractive, currentPlayerId, getCellPos, cellSize, COLORS, drawPawn, drawWall, drawWallPreview]);
 
   // ================================================================
   // INTERACTION HANDLERS
