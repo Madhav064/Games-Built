@@ -2,22 +2,33 @@
 // Rush Wall — Profile Screen
 // ============================================================
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useGame } from '../../context/GameContext';
 import { soundManager } from '../../audio/soundManager';
 import { updateProfile, COSMETICS } from '../../store/cosmetics';
+import { getPlayerRank } from '../../sdk/leaderboard';
 
 export function ProfileScreen() {
   const { state, dispatch } = useGame();
   const { profile } = state;
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(profile.username);
+  const [onlineWins, setOnlineWins] = useState(0);
+  const [onlineLosses, setOnlineLosses] = useState(0);
+
+  useEffect(() => {
+    getPlayerRank().then(({ onlineWins: w, onlineLosses: l }) => {
+      setOnlineWins(w);
+      setOnlineLosses(l);
+    }).catch(() => {});
+  }, []);
 
   const avatarItem = COSMETICS.find(c => c.id === profile.equippedAvatar);
   const avatarImg = avatarItem?.preview || '/avatars/avatar_1.jpg';
 
-  const winRate = profile.gamesPlayed > 0
-    ? Math.round((profile.gamesWon / profile.gamesPlayed) * 100)
+  const totalOnline = onlineWins + onlineLosses;
+  const winRate = totalOnline > 0
+    ? Math.round((onlineWins / totalOnline) * 100)
     : 0;
 
   const goBack = () => {
@@ -94,18 +105,18 @@ export function ProfileScreen() {
 
         <div className="profile-stats-grid">
           <div className="profile-stat">
-            <div className="profile-stat-value">{profile.gamesPlayed}</div>
-            <div className="profile-stat-label">Games</div>
+            <div className="profile-stat-value">{totalOnline}</div>
+            <div className="profile-stat-label">Online Games</div>
           </div>
           <div className="profile-stat">
             <div className="profile-stat-value" style={{ color: 'var(--color-emerald)' }}>
-              {profile.gamesWon}
+              {onlineWins}
             </div>
             <div className="profile-stat-label">Wins</div>
           </div>
           <div className="profile-stat">
             <div className="profile-stat-value" style={{ color: 'var(--color-danger)' }}>
-              {profile.gamesLost}
+              {onlineLosses}
             </div>
             <div className="profile-stat-label">Losses</div>
           </div>
