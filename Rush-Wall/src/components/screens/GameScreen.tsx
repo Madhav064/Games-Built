@@ -23,12 +23,29 @@ export function GameScreen() {
     }
   }, [showGameOver]);
 
+  useEffect(() => {
+    if (activeEmote) {
+      const timer = setTimeout(() => setActiveEmote(null), 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [activeEmote]);
+
   if (!gameState) return null;
 
-  const player0 = gameState.players[0];
-  const player1 = gameState.players[1];
-  const isMyTurn = gameState.currentTurn === 0;
+  const localId = state.localPlayerId;
+  const opponentId: 0 | 1 = localId === 0 ? 1 : 0;
+
+  // "me" is always shown at the bottom, "opponent" at the top
+  const me = gameState.players[localId];
+  const opponent = gameState.players[opponentId];
+
+  const isMyTurn = gameState.currentTurn === localId;
+  const timer = gameState.turnTimer;
+  const isUrgent = timer <= 10;
   const isPlaying = gameState.phase === GamePhase.Playing;
+  
+  const opponentAvatarImg = COSMETICS.find(c => c.id === opponent.avatar)?.preview || '/avatars/avatar_1.jpg';
+  const myAvatarImg = COSMETICS.find(c => c.id === me.avatar)?.preview || '/avatars/avatar_1.jpg';
 
   const formatTime = (s: number) => {
     const mins = Math.floor(s / 60);
@@ -52,16 +69,8 @@ export function GameScreen() {
     setActiveEmote({ emoji, timestamp: Date.now() });
   };
 
-  useEffect(() => {
-    if (activeEmote) {
-      const timer = setTimeout(() => setActiveEmote(null), 2500);
-      return () => clearTimeout(timer);
-    }
-  }, [activeEmote]);
 
-  // Determine timer display for the active player
-  const timer = gameState.turnTimer;
-  const isUrgent = timer <= 10;
+
 
   // Get available emotes
   const availableEmotes = COSMETICS.filter(
@@ -84,26 +93,30 @@ export function GameScreen() {
         {!isPlaying && <div />}
       </div>
 
-      {/* Opponent Bar (Player 1 - top) */}
-      <div className={`player-bar player-bar-bg opponent ${gameState.currentTurn === 1 ? 'active' : ''}`}>
+      {/* Opponent Bar (top) */}
+      <div className={`player-bar player-bar-bg opponent ${gameState.currentTurn === opponentId ? 'active' : ''}`}>
         <div 
           className="player-pawn" 
-          style={{ background: getCosmeticColor(player1.pawnSkin, 'var(--color-red)') }} 
+          style={{ 
+            backgroundImage: `url(${opponentAvatarImg})`,
+            backgroundSize: 'cover',
+            border: `3px solid ${getCosmeticColor(opponent.pawnSkin, 'var(--color-red)')}`
+          }} 
         />
         <div className="player-info">
-          <div className="player-name">{player1.name}</div>
+          <div className="player-name">{opponent.name}</div>
           <div className="player-walls">
             {Array.from({ length: WALLS_PER_PLAYER }, (_, i) => (
               <div
                 key={i}
-                className={`wall-pip opponent-pip ${i >= player1.wallsRemaining ? 'used' : ''}`}
-                style={{ background: i >= player1.wallsRemaining ? undefined : getCosmeticColor(player1.wallSkin, 'var(--color-red)') }}
+                className={`wall-pip opponent-pip ${i >= opponent.wallsRemaining ? 'used' : ''}`}
+                style={{ background: i >= opponent.wallsRemaining ? undefined : getCosmeticColor(opponent.wallSkin, 'var(--color-red)') }}
               />
             ))}
           </div>
         </div>
-        <div className={`player-timer ${gameState.currentTurn === 1 && isUrgent ? 'urgent' : ''}`}>
-          {gameState.currentTurn === 1 ? formatTime(timer) : '--:--'}
+        <div className={`player-timer ${gameState.currentTurn === opponentId && isUrgent ? 'urgent' : ''}`}>
+          {gameState.currentTurn === opponentId ? formatTime(timer) : '--:--'}
         </div>
       </div>
 
@@ -119,8 +132,8 @@ export function GameScreen() {
         </div>
       </div>
 
-      {/* Player Bar (Player 0 - bottom) */}
-      <div className={`player-bar player-bar-bg ${gameState.currentTurn === 0 ? 'active' : ''}`} style={{ position: 'relative' }}>
+      {/* My Bar (bottom) */}
+      <div className={`player-bar player-bar-bg ${gameState.currentTurn === localId ? 'active' : ''}`} style={{ position: 'relative' }}>
         {activeEmote && (
           <div 
             style={{ 
@@ -138,22 +151,26 @@ export function GameScreen() {
         )}
         <div 
           className="player-pawn" 
-          style={{ background: getCosmeticColor(player0.pawnSkin, 'var(--color-blue)') }} 
+          style={{ 
+            backgroundImage: `url(${myAvatarImg})`,
+            backgroundSize: 'cover',
+            border: `3px solid ${getCosmeticColor(me.pawnSkin, 'var(--color-blue)')}`
+          }} 
         />
         <div className="player-info">
-          <div className="player-name">{player0.name}</div>
+          <div className="player-name">{me.name}</div>
           <div className="player-walls">
             {Array.from({ length: WALLS_PER_PLAYER }, (_, i) => (
               <div
                 key={i}
-                className={`wall-pip ${i >= player0.wallsRemaining ? 'used' : ''}`}
-                style={{ background: i >= player0.wallsRemaining ? undefined : getCosmeticColor(player0.wallSkin, 'var(--color-blue)') }}
+                className={`wall-pip ${i >= me.wallsRemaining ? 'used' : ''}`}
+                style={{ background: i >= me.wallsRemaining ? undefined : getCosmeticColor(me.wallSkin, 'var(--color-blue)') }}
               />
             ))}
           </div>
         </div>
-        <div className={`player-timer ${gameState.currentTurn === 0 && isUrgent ? 'urgent' : ''}`}>
-          {gameState.currentTurn === 0 ? formatTime(timer) : '--:--'}
+        <div className={`player-timer ${gameState.currentTurn === localId && isUrgent ? 'urgent' : ''}`}>
+          {gameState.currentTurn === localId ? formatTime(timer) : '--:--'}
         </div>
       </div>
 
@@ -166,12 +183,12 @@ export function GameScreen() {
           <span>{wallOrientation === 'horizontal' ? 'H-Wall' : 'V-Wall'}</span>
         </div>
 
-        <div className={`turn-indicator ${gameState.currentTurn === 1 ? 'opponent-turn' : ''}`}>
+        <div className={`turn-indicator ${!isMyTurn ? 'opponent-turn' : ''}`}>
           {!isPlaying
             ? 'Game Over'
-            : gameState.currentTurn === 0
-              ? gameState.mode === 'local' ? 'Player 1 Turn' : 'Your Turn'
-              : gameState.mode === 'local' ? 'Player 2 Turn' : 'Opponent\'s Turn'
+            : isMyTurn
+              ? gameState.mode === 'local' ? `Player ${localId + 1} Turn` : 'Your Turn'
+              : gameState.mode === 'local' ? `Player ${opponentId + 1} Turn` : 'Opponent\'s Turn'
           }
         </div>
 
