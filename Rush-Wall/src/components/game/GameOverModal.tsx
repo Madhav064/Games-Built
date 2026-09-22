@@ -14,7 +14,9 @@ export function GameOverModal() {
 
   const winner = gameState.players[gameState.winner];
   const loser = gameState.players[gameState.winner === 0 ? 1 : 0];
-  const playerWon = gameState.winner === 0;
+  const playerWon = gameState.mode === 'local' 
+    ? true  // In local mode, someone always wins — show 'win' banner
+    : gameState.winner === state.localPlayerId;
 
   // In local mode, just show who won
   const isLocal = gameState.mode === GameMode.Local;
@@ -81,9 +83,11 @@ export function GameOverModal() {
         </div>
 
         <div className="game-over-actions">
-          <button className="btn btn-primary btn-full btn-lg" onClick={handlePlayAgain}>
-            ⚔️ Play Again
-          </button>
+          {gameState.mode !== 'online' && (
+            <button className="btn btn-primary btn-full btn-lg" onClick={handlePlayAgain}>
+              ⚔️ Play Again
+            </button>
+          )}
           <button className="btn btn-secondary btn-full" onClick={handleGoHome}>
             🏠 Back to Menu
           </button>
