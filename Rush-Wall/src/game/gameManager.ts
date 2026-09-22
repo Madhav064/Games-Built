@@ -52,7 +52,11 @@ export class GameManager {
     player1Name: string = 'You',
     player2Name: string = 'Opponent',
     pawnSkin: string = 'pawn_blue',
-    wallSkin: string = 'wall_default'
+    wallSkin: string = 'wall_default',
+    p2PawnSkin: string = 'pawn_red',
+    p2WallSkin: string = 'wall_default',
+    p1Avatar: string = 'avatar_1',
+    p2Avatar: string = 'avatar_2'
   ): GameState {
     const isAI = mode === GameMode.VsAI;
 
@@ -66,6 +70,7 @@ export class GameManager {
       isAI: false,
       pawnSkin: pawnSkin,
       wallSkin: wallSkin,
+      avatar: p1Avatar,
     };
 
     const player1: Player = {
@@ -77,8 +82,9 @@ export class GameManager {
       goalRow: getGoalRow(1),
       isAI: isAI,
       aiDifficulty: isAI ? aiDifficulty : undefined,
-      pawnSkin: 'pawn_red',
-      wallSkin: 'wall_default',
+      pawnSkin: p2PawnSkin,
+      wallSkin: p2WallSkin,
+      avatar: p2Avatar,
     };
 
     return {
@@ -104,12 +110,16 @@ export class GameManager {
     player1Name: string = 'You',
     player2Name?: string,
     pawnSkin: string = 'pawn_blue',
-    wallSkin: string = 'wall_default'
+    wallSkin: string = 'wall_default',
+    p2PawnSkin: string = 'pawn_red',
+    p2WallSkin: string = 'wall_default',
+    p1Avatar: string = 'avatar_1',
+    p2Avatar: string = 'avatar_2'
   ): void {
     this.cleanup();
 
     const p2Name = player2Name || (mode === GameMode.VsAI ? `AI (${aiDifficulty})` : 'Player 2');
-    this.state = this.createInitialState(mode, aiDifficulty, player1Name, p2Name, pawnSkin, wallSkin);
+    this.state = this.createInitialState(mode, aiDifficulty, player1Name, p2Name, pawnSkin, wallSkin, p2PawnSkin, p2WallSkin, p1Avatar, p2Avatar);
     this.state.phase = GamePhase.Playing;
 
     this.emit('stateChanged', this.state);
