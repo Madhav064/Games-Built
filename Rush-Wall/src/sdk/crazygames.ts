@@ -1,228 +1,245 @@
 // ============================================================
-// Rush Wall — CrazyGames SDK Integration
+// Wall Duel — CrazyGames SDK v3 integration
+// Docs: https://docs.crazygames.com/sdk/intro/
+// Every call is safe outside CrazyGames (local dev / other hosts).
 // ============================================================
 
-/**
- * Check if CrazyGames SDK is available.
- */
-function getSDK(): any | null {
-  if (typeof window !== 'undefined' && (window as any).CrazyGames?.SDK) {
-    return (window as any).CrazyGames.SDK;
-  }
-  return null;
+import { STORAGE_PREFIX, LEGACY_STORAGE_PREFIX } from '../config/brand';
+
+interface CGSettings { muteAudio: boolean; disableChat: boolean }
+
+/** A player logged in to their CrazyGames account. */
+export interface CrazyUser {
+  username: string;
+  profilePictureUrl: string;
 }
 
-/**
- * Initialize the CrazyGames SDK.
- * Should be called during game loading.
- */
+interface CGAdCallbacks {
+  adStarted?: () => void;
+  adFinished?: () => void;
+  adError?: (error: unknown) => void;
+}
+
+interface CrazySDK {
+  init(): Promise<void>;
+  environment: 'local' | 'crazygames' | 'disabled';
+  game: {
+    gameplayStart(): void;
+    gameplayStop(): void;
+    loadingStart(): void;
+    loadingStop(): void;
+    happytime(): void;
+    inviteLink(params: Record<string, string>): string;
+    getInviteParam(name: string): string | null;
+    isInstantMultiplayer?: boolean;
+    settings: CGSettings;
+    addSettingsChangeListener(listener: (settings: CGSettings) => void): void;
+  };
+  ad: { requestAd(type: 'midgame' | 'rewarded', callbacks: CGAdCallbacks): void };
+  user: {
+    isUserAccountAvailable: boolean;
+    getUser(): Promise<CrazyUser | null>;
+    showAuthPrompt(): Promise<CrazyUser | null>;
+    addAuthListener(listener: (user: CrazyUser | null) => void): void;
+  };
+  data: {
+    getItem(key: string): string | null;
+    setItem(key: string, value: string): void;
+    removeItem(key: string): void;
+  };
+}
+
+declare global {
+  interface Window { CrazyGames?: { SDK?: CrazySDK } }
+}
+
+let sdk: CrazySDK | null = null;
+let gameplayActive = false;
+const adListeners = new Set<(playing: boolean) => void>();
+
+function active(): CrazySDK | null {
+  return sdk && sdk.environment !== 'disabled' ? sdk : null;
+}
+
+function safely<T>(label: string, fn: () => T, fallback: T): T {
+  try {
+    return fn();
+  } catch (e) {
+    console.warn(`[CrazyGames] ${label} failed`, e);
+    return fallback;
+  }
+}
+
+/** Initialise the SDK. Resolves true when running on CrazyGames (or its local test mode). */
 export async function initSDK(): Promise<boolean> {
-  const sdk = getSDK();
-  if (!sdk) {
-    console.log('[CrazyGames] SDK not available (local development mode)');
-    return false;
-  }
-
+  const candidate = window.CrazyGames?.SDK;
+  if (!candidate) return false;
   try {
-    await sdk.init();
-    console.log('[CrazyGames] SDK initialized successfully');
-    return true;
+    await candidate.init();
+    sdk = candidate;
+    return candidate.environment !== 'disabled';
   } catch (e) {
-    console.warn('[CrazyGames] SDK init failed:', e);
+    console.warn('[CrazyGames] SDK init failed, continuing without it', e);
     return false;
   }
 }
 
-// ============================================================
-// Data Module — Save/Load Player Progress
-// ============================================================
+// ------------------------------------------------------------
+// Lifecycle
+// ------------------------------------------------------------
+export const loadingStart = () => safely('loadingStart', () => active()?.game.loadingStart(), undefined);
+export const loadingStop = () => safely('loadingStop', () => active()?.game.loadingStop(), undefined);
 
-/**
- * Save data to CrazyGames Data Module (falls back to localStorage).
- */
-export function saveData(key: string, value: string): void {
-  const sdk = getSDK();
-  if (sdk?.data) {
-    try {
-      sdk.data.setItem(key, value);
-      return;
-    } catch (e) {
-      console.warn('[CrazyGames] Data save failed, falling back to localStorage:', e);
-    }
-  }
-  // Fallback to localStorage
-  try {
-    localStorage.setItem(`rushwall_${key}`, value);
-  } catch (e) {
-    console.warn('localStorage save failed:', e);
-  }
+export function gameplayStart(): void {
+  if (gameplayActive) return;
+  gameplayActive = true;
+  safely('gameplayStart', () => active()?.game.gameplayStart(), undefined);
 }
 
-/**
- * Load data from CrazyGames Data Module (falls back to localStorage).
- */
-export function loadData(key: string): string | null {
-  const sdk = getSDK();
-  if (sdk?.data) {
-    try {
-      return sdk.data.getItem(key);
-    } catch (e) {
-      console.warn('[CrazyGames] Data load failed, falling back to localStorage:', e);
-    }
-  }
-  // Fallback
+export function gameplayStop(): void {
+  if (!gameplayActive) return;
+  gameplayActive = false;
+  safely('gameplayStop', () => active()?.game.gameplayStop(), undefined);
+}
+
+/** Site celebration — keep it for real milestones (ladder progress, level ups). */
+export const happyTime = () => safely('happytime', () => active()?.game.happytime(), undefined);
+
+// ------------------------------------------------------------
+// Settings (mute / chat) set by the CrazyGames site
+// ------------------------------------------------------------
+export function getPlatformSettings(): CGSettings {
+  return safely('settings', () => active()?.game.settings ?? { muteAudio: false, disableChat: false },
+    { muteAudio: false, disableChat: false });
+}
+
+export function onPlatformSettingsChange(listener: (settings: CGSettings) => void): void {
+  safely('addSettingsChangeListener', () => active()?.game.addSettingsChangeListener(listener), undefined);
+}
+
+// ------------------------------------------------------------
+// Ads — the game must be silent while an ad plays
+// ------------------------------------------------------------
+/** Subscribe to ad playback (true while an ad is on screen). */
+export function onAdPlayback(listener: (playing: boolean) => void): () => void {
+  adListeners.add(listener);
+  return () => adListeners.delete(listener);
+}
+
+function requestAd(type: 'midgame' | 'rewarded'): Promise<boolean> {
+  const s = active();
+  if (!s) return Promise.resolve(false);
+  return new Promise(resolve => {
+    const done = (watched: boolean) => {
+      adListeners.forEach(l => l(false));
+      resolve(watched);
+    };
+    const requested = safely('requestAd', () => {
+      s.ad.requestAd(type, {
+        adStarted: () => adListeners.forEach(l => l(true)),
+        adFinished: () => done(true),
+        adError: () => done(false),
+      });
+      return true;
+    }, false);
+    if (!requested) done(false);
+  });
+}
+
+/** Break ad between matches. CrazyGames also applies its own frequency cap. */
+export const requestBreakAd = (): Promise<boolean> => requestAd('midgame');
+
+/** Opt-in rewarded ad. Resolves true only when the ad was watched to the end. */
+export const requestRewardedAd = (): Promise<boolean> => requestAd('rewarded');
+
+// ------------------------------------------------------------
+// Invites (play with a friend)
+// ------------------------------------------------------------
+export function createInviteLink(params: Record<string, string>): string {
+  const s = active();
+  if (s) return safely('inviteLink', () => s.game.inviteLink(params), fallbackInviteLink(params));
+  return fallbackInviteLink(params);
+}
+
+export function getInviteParam(name: string): string | null {
+  const s = active();
+  const fromSdk = s ? safely('getInviteParam', () => s.game.getInviteParam(name), null) : null;
+  return fromSdk ?? new URLSearchParams(window.location.search).get(name);
+}
+
+export function isInstantMultiplayer(): boolean {
+  return !!active()?.game.isInstantMultiplayer;
+}
+
+function fallbackInviteLink(params: Record<string, string>): string {
+  const url = new URL(window.location.href);
+  url.search = new URLSearchParams(params).toString();
+  return url.toString();
+}
+
+// ------------------------------------------------------------
+// User accounts — use the CrazyGames username and picture
+// ------------------------------------------------------------
+function userModule() {
+  const s = active();
+  return s?.user?.isUserAccountAvailable ? s.user : null;
+}
+
+/** True when the CrazyGames account system can be used (not on other domains). */
+export const isAccountSystemAvailable = (): boolean => !!userModule();
+
+/** The logged-in CrazyGames player, or null for guests / outside CrazyGames. */
+export async function getCrazyUser(): Promise<CrazyUser | null> {
+  const u = userModule();
+  if (!u) return null;
   try {
-    return localStorage.getItem(`rushwall_${key}`);
+    return await u.getUser();
   } catch (e) {
-    console.warn('localStorage load failed:', e);
+    console.warn('[CrazyGames] getUser failed', e);
     return null;
   }
 }
 
-/**
- * Remove data.
- */
-export function removeData(key: string): void {
-  const sdk = getSDK();
-  if (sdk?.data) {
-    try {
-      sdk.data.removeItem(key);
-      return;
-    } catch (e) {
-      console.warn('[CrazyGames] Data remove failed:', e);
-    }
-  }
+/** Open the CrazyGames log-in / sign-up popup. Resolves with the user, or null if cancelled. */
+export async function showCrazyLogin(): Promise<CrazyUser | null> {
+  const u = userModule();
+  if (!u) return null;
   try {
-    localStorage.removeItem(`rushwall_${key}`);
-  } catch (e) {
-    console.warn('localStorage remove failed:', e);
+    return await u.showAuthPrompt();
+  } catch {
+    return null; // cancelled, already signed in, or a prompt is already open
   }
 }
 
-// ============================================================
-// Game Events — Lifecycle
-// ============================================================
+/** Called when the player logs in during the session (logging out reloads the page). */
+export function onCrazyLogin(listener: (user: CrazyUser | null) => void): void {
+  safely('addAuthListener', () => userModule()?.addAuthListener(listener), undefined);
+}
 
-/**
- * Signal that gameplay has started.
- */
-export function gameplayStart(): void {
-  const sdk = getSDK();
-  if (sdk?.game) {
-    try {
-      sdk.game.gameplayStart();
-    } catch (e) {
-      console.warn('[CrazyGames] gameplayStart failed:', e);
-    }
+// ------------------------------------------------------------
+// Data module — progress is tied to the player's CrazyGames account.
+// Falls back to localStorage outside CrazyGames.
+// ------------------------------------------------------------
+export function saveData(key: string, value: string): void {
+  const full = STORAGE_PREFIX + key;
+  const s = active();
+  if (s && safely('data.setItem', () => { s.data.setItem(full, value); return true; }, false)) return;
+  safely('localStorage.setItem', () => localStorage.setItem(full, value), undefined);
+}
+
+export function loadData(key: string): string | null {
+  const full = STORAGE_PREFIX + key;
+  const s = active();
+  if (s) {
+    const value = safely('data.getItem', () => s.data.getItem(full), null);
+    if (value !== null) return value;
   }
+  return safely('localStorage.getItem', () => localStorage.getItem(full), null);
 }
 
-/**
- * Signal that gameplay has stopped (menu, pause, game over).
- */
-export function gameplayStop(): void {
-  const sdk = getSDK();
-  if (sdk?.game) {
-    try {
-      sdk.game.gameplayStop();
-    } catch (e) {
-      console.warn('[CrazyGames] gameplayStop failed:', e);
-    }
-  }
-}
-
-/**
- * Signal game loading started.
- */
-export function loadingStart(): void {
-  const sdk = getSDK();
-  if (sdk?.game) {
-    try {
-      sdk.game.loadingStart();
-    } catch (e) {
-      console.warn('[CrazyGames] loadingStart failed:', e);
-    }
-  }
-}
-
-/**
- * Signal game loading finished.
- */
-export function loadingStop(): void {
-  const sdk = getSDK();
-  if (sdk?.game) {
-    try {
-      sdk.game.loadingStop();
-    } catch (e) {
-      console.warn('[CrazyGames] loadingStop failed:', e);
-    }
-  }
-}
-
-/**
- * Trigger "happy time" effect (e.g., on win).
- */
-export function happyTime(): void {
-  const sdk = getSDK();
-  if (sdk?.game) {
-    try {
-      sdk.game.happytime();
-    } catch (e) {
-      console.warn('[CrazyGames] happytime failed:', e);
-    }
-  }
-}
-
-// ============================================================
-// Ad Breaks
-// ============================================================
-
-/**
- * Request a midgame ad break (between rounds, game over, etc.).
- * The SDK handles pacing automatically.
- */
-export function requestAdBreak(): Promise<void> {
-  return new Promise((resolve) => {
-    const sdk = getSDK();
-    if (!sdk?.ad) {
-      resolve();
-      return;
-    }
-
-    try {
-      sdk.ad.requestAd('midgame', {
-        adFinished: () => resolve(),
-        adError: () => resolve(),
-        adStarted: () => { /* pause game audio */ },
-      });
-    } catch (e) {
-      console.warn('[CrazyGames] ad request failed:', e);
-      resolve();
-    }
-  });
-}
-
-/**
- * Request a rewarded ad (for bonus coins, unlocks, etc.).
- * Returns true if ad was watched, false if skipped/failed.
- */
-export function requestRewardedAd(): Promise<boolean> {
-  return new Promise((resolve) => {
-    const sdk = getSDK();
-    if (!sdk?.ad) {
-      resolve(false);
-      return;
-    }
-
-    try {
-      sdk.ad.requestAd('rewarded', {
-        adFinished: () => resolve(true),
-        adError: () => resolve(false),
-        adStarted: () => { /* pause game audio */ },
-      });
-    } catch (e) {
-      console.warn('[CrazyGames] rewarded ad request failed:', e);
-      resolve(false);
-    }
-  });
+/** Read a value saved by the previous "Rush Wall" build (used once for migration). */
+export function loadLegacyData(key: string): string | null {
+  const s = active();
+  const fromSdk = s ? safely('legacy data.getItem', () => s.data.getItem(key), null) : null;
+  return fromSdk ?? safely('legacy localStorage', () => localStorage.getItem(LEGACY_STORAGE_PREFIX + key), null);
 }
