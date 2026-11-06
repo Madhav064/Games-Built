@@ -8,7 +8,7 @@ import { useGame } from '../../context/GameContext';
 import { AIDifficulty } from '../../game/types';
 import { QUICK_MATCH_OFFER_AI_AFTER_SECONDS } from '../../config/balance';
 import { isOnlineConfigured } from '../../sdk/supabase';
-import { createInviteLink } from '../../sdk/crazygames';
+import { createInviteLink, reportJoinableRoom, reportLeftRoom } from '../../sdk/crazygames';
 import type { MatchInfo, SearchStatus } from '../../sdk/multiplayer';
 import { soundManager } from '../../audio/soundManager';
 import { resolveAvatar } from '../../store/profile';
@@ -16,8 +16,8 @@ import { resolveAvatar } from '../../store/profile';
 type View = 'menu' | 'quick' | 'host' | 'join';
 
 export function OnlineScreen() {
-  const { state, navigate, startOnlineMatch, startAIMatch, consumeRoomCode } = useGame();
-  const { profile, pendingRoomCode } = state;
+  const { state, navigate, startOnlineMatch, startAIMatch, consumeRoomCode, consumeInstantRoom } = useGame();
+  const { profile, pendingRoomCode, instantRoom } = state;
   const [view, setView] = useState<View>('menu');
   const [status, setStatus] = useState<SearchStatus>('connecting');
   const [seconds, setSeconds] = useState(0);
@@ -26,6 +26,8 @@ export function OnlineScreen() {
   const [joinCode, setJoinCode] = useState('');
   const [copied, setCopied] = useState(false);
   const stopRef = useRef<(() => void) | null>(null);
+  /** True while this player waits in an open private room that CrazyGames can invite friends to. */
+  const hostingRef = useRef(false);
 
   const me = {
     name: profile.username,
@@ -37,6 +39,10 @@ export function OnlineScreen() {
   const stopSearch = useCallback(() => {
     stopRef.current?.();
     stopRef.current = null;
+    if (hostingRef.current) {
+      hostingRef.current = false;
+      reportLeftRoom();
+    }
   }, []);
 
   useEffect(() => stopSearch, [stopSearch]);
@@ -44,6 +50,7 @@ export function OnlineScreen() {
   const onMatched = useCallback((info: MatchInfo) => {
     soundManager.play('turnStart');
     stopRef.current = null;
+    hostingRef.current = false; // the match reports the room as full
     setTimeout(() => startOnlineMatch(info), 400);
   }, [startOnlineMatch]);
 
@@ -64,6 +71,9 @@ export function OnlineScreen() {
     setView('host');
     const handle = await mp.hostRoom(code, me, onMatched, setStatus);
     stopRef.current = handle.stop;
+    // Lets CrazyGames show its invite button for this room.
+    hostingRef.current = true;
+    reportJoinableRoom(code);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onMatched, profile]);
 
@@ -84,6 +94,13 @@ export function OnlineScreen() {
     consumeRoomCode();
     void startJoin(pendingRoomCode);
   }, [pendingRoomCode, consumeRoomCode, startJoin]);
+
+  // Started from the CrazyGames party UI: open a private room straight away.
+  useEffect(() => {
+    if (!instantRoom) return;
+    consumeInstantRoom();
+    void startHost();
+  }, [instantRoom, consumeInstantRoom, startHost]);
 
   // Searching clock + computer fallback offer.
   useEffect(() => {
