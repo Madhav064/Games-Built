@@ -1,242 +1,213 @@
 // ============================================================
-// Rush Wall — Game Screen
+// Wall Duel — Game screen (responsive: portrait & 16:9 landscape)
 // ============================================================
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useGame } from '../../context/GameContext';
-import { GameBoard } from '../game/GameBoard';
-import { GameOverModal } from '../game/GameOverModal';
-import { GamePhase, WALLS_PER_PLAYER } from '../../game/types';
+import { GameBoard, type InputMode, type WallAnchor } from '../game/GameBoard';
+import { ResultsModal } from '../game/ResultsModal';
+import { TutorialCoach } from '../game/TutorialCoach';
+import { PlayerCard } from '../game/PlayerCard';
+import { type Move, type WallOrientation, GamePhase, GameMode } from '../../game/types';
+import { opponentOf } from '../../game/rules';
+import { EMOTES } from '../../store/cosmetics';
+import { ownsCosmetic } from '../../store/profile';
 import { soundManager } from '../../audio/soundManager';
-import { getCosmeticColor, COSMETICS } from '../../store/cosmetics';
+import { Modal } from '../shared/Modal';
 
 export function GameScreen() {
-  const { state, dispatch, resign, goHome } = useGame();
-  const { gameState, wallOrientation, showGameOver } = state;
-  const [showResignModal, setShowResignModal] = useState(false);
-  const [activeEmote, setActiveEmote] = useState<{ emoji: string, timestamp: number } | null>(null);
+  const { state, makeMove, resign, sendEmote, quitMatch, updateSettings } = useGame();
+  const { gameState, profile, match, localPlayerId, emote, chatDisabled } = state;
+  const [orientation, setOrientation] = useState<WallOrientation>('horizontal');
+  const [confirm, setConfirm] = useState<'resign' | 'quit' | null>(null);
+  // Mode and pending wall belong to one turn; a new turn starts back in move mode.
+  const [input, setInput] = useState<{ turn: number; mode: InputMode; pending: WallAnchor | null }>({ turn: -1, mode: 'move', pending: null });
+  const turn = gameState?.turnCount ?? 0;
+  const mode: InputMode = input.turn === turn ? input.mode : 'move';
+  const pendingWall = input.turn === turn ? input.pending : null;
+  const setMode = useCallback((m: InputMode | ((prev: InputMode) => InputMode)) =>
+    setInput(prev => {
+      const current = prev.turn === turn ? prev.mode : 'move';
+      return { turn, mode: typeof m === 'function' ? m(current) : m, pending: null };
+    }), [turn]);
+  const setPendingWall = useCallback((w: WallAnchor | null | ((prev: WallAnchor | null) => WallAnchor | null)) =>
+    setInput(prev => {
+      const current = prev.turn === turn ? prev.pending : null;
+      return { turn, mode: prev.turn === turn ? prev.mode : 'move', pending: typeof w === 'function' ? w(current) : w };
+    }), [turn]);
 
-  // Auto-close resign modal if the game ends (e.g. via timeout)
-  useEffect(() => {
-    if (showGameOver) {
-      setShowResignModal(false);
-    }
-  }, [showGameOver]);
+  const isLocal = gameState?.mode === GameMode.Local;
+  const playing = gameState?.phase === GamePhase.Playing;
+  const myTurn = !!gameState && (isLocal || gameState.currentTurn === localPlayerId);
+  const interactive = !!playing && myTurn;
+  const mover = gameState ? gameState.players[gameState.currentTurn] : null;
+  const canWall = interactive && (mover?.wallsRemaining ?? 0) > 0;
 
-  useEffect(() => {
-    if (activeEmote) {
-      const timer = setTimeout(() => setActiveEmote(null), 2500);
-      return () => clearTimeout(timer);
-    }
-  }, [activeEmote]);
+  const onMove = useCallback((move: Move) => {
+    const ok = makeMove(move);
+    if (ok) setPendingWall(null);
+    return ok;
+  }, [makeMove, setPendingWall]);
 
-  if (!gameState) return null;
-
-  const localId = state.localPlayerId;
-  const opponentId: 0 | 1 = localId === 0 ? 1 : 0;
-
-  // "me" is always shown at the bottom, "opponent" at the top
-  const me = gameState.players[localId];
-  const opponent = gameState.players[opponentId];
-
-  const isMyTurn = gameState.currentTurn === localId;
-  const timer = gameState.turnTimer;
-  const isUrgent = timer <= 10;
-  const isPlaying = gameState.phase === GamePhase.Playing;
-  
-  const opponentAvatarImg = COSMETICS.find(c => c.id === opponent.avatar)?.preview || '/avatars/avatar_1.jpg';
-  const myAvatarImg = COSMETICS.find(c => c.id === me.avatar)?.preview || '/avatars/avatar_1.jpg';
-
-  const formatTime = (s: number) => {
-    const mins = Math.floor(s / 60);
-    const secs = s % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const handleResign = () => {
-    if (!isPlaying) return;
+  const toggleMode = useCallback(() => {
+    if (!canWall && mode === 'move') return;
     soundManager.play('click');
-    setShowResignModal(true);
-  };
+    setMode(m => (m === 'move' ? 'wall' : 'move'));
+  }, [canWall, mode, setMode]);
 
-  const toggleOrientation = () => {
+  const rotate = useCallback(() => {
     soundManager.play('click');
-    dispatch({ type: 'TOGGLE_WALL_ORIENTATION' });
-  };
+    setOrientation(o => (o === 'horizontal' ? 'vertical' : 'horizontal'));
+    setPendingWall(w => (w ? { ...w, orientation: w.orientation === 'horizontal' ? 'vertical' : 'horizontal' } : w));
+  }, [setPendingWall]);
 
-  const handleEmote = (emoji: string) => {
-    soundManager.play('emote');
-    setActiveEmote({ emoji, timestamp: Date.now() });
-  };
+  // Keyboard: W = wall mode, R = rotate, Enter = place, Esc = cancel
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!interactive || e.target instanceof HTMLInputElement) return;
+      const k = e.key.toLowerCase();
+      if (k === 'w') toggleMode();
+      else if (k === 'r') rotate();
+      else if (k === 'escape') { setPendingWall(null); setMode('move'); }
+      else if (k === 'enter' && pendingWall) onMove({ type: 'wall', wall: pendingWall });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [interactive, toggleMode, rotate, pendingWall, onMove, setMode, setPendingWall]);
 
+  const emotes = useMemo(() => EMOTES.filter(e => ownsCosmetic(profile, e)), [profile]);
+  const showEmotes = !(match?.kind === 'online' && chatDisabled) && match?.kind !== 'tutorial';
 
+  if (!gameState || !match) return null;
 
+  const meId = isLocal ? 0 : localPlayerId;
+  const oppId = opponentOf(meId);
+  const me = gameState.players[meId];
+  const opp = gameState.players[oppId];
+  const timerOn = match.kind !== 'tutorial';
 
-  // Get available emotes
-  const availableEmotes = COSMETICS.filter(
-    item => item.type === 'emote' && (item.unlocked || state.profile.unlockedCosmetics.includes(item.id))
-  );
+  const turnText = !playing
+    ? 'Match over'
+    : isLocal
+      ? `${mover!.name}'s turn`
+      : myTurn ? 'Your turn' : `${opp.name} is thinking…`;
+
+  const title = match.kind === 'tutorial' ? 'Tutorial'
+    : match.kind === 'online' ? 'Online match'
+    : match.kind === 'local' ? 'Same device'
+    : 'vs Computer';
 
   return (
     <div className="screen game-screen">
-      {/* Header */}
-      <div className="game-header">
-        <button className="btn btn-ghost btn-sm" onClick={goHome}>
-          ← Menu
-        </button>
-        <div className="game-title">Rush Wall</div>
-        {isPlaying && (
-          <button className="btn btn-ghost btn-sm" onClick={handleResign} style={{ color: 'var(--color-danger)' }}>
-            🏳️ Resign
-          </button>
-        )}
-        {!isPlaying && <div />}
-      </div>
+      <header className="game-top">
+        <button className="btn btn-ghost btn-sm" onClick={() => (playing ? setConfirm('quit') : quitMatch())}>← Menu</button>
+        <div className="game-top-title">{title}</div>
+        <div className="game-top-actions">
+          <button
+            className="btn-icon"
+            aria-label={profile.settings.soundOn ? 'Mute sound' : 'Unmute sound'}
+            onClick={() => updateSettings({ soundOn: !profile.settings.soundOn })}
+          >{profile.settings.soundOn ? '🔊' : '🔇'}</button>
+          {playing && match.kind !== 'tutorial' && (
+            <button className="btn btn-ghost btn-sm danger-text" onClick={() => setConfirm('resign')}>Resign</button>
+          )}
+        </div>
+      </header>
 
-      {/* Opponent Bar (top) */}
-      <div className={`player-bar player-bar-bg opponent ${gameState.currentTurn === opponentId ? 'active' : ''}`}>
-        <div 
-          className="player-pawn" 
-          style={{ 
-            backgroundImage: `url(${opponentAvatarImg})`,
-            backgroundSize: 'cover',
-            border: `3px solid ${getCosmeticColor(opponent.pawnSkin, 'var(--color-red)')}`
-          }} 
+      <div className="game-main">
+        <PlayerCard
+          className="area-opp"
+          player={opp}
+          active={playing && gameState.currentTurn === oppId}
+          timer={timerOn && gameState.currentTurn === oppId ? gameState.turnTimer : null}
+          emote={emote?.playerId === oppId ? emote : null}
         />
-        <div className="player-info">
-          <div className="player-name">{opponent.name}</div>
-          <div className="player-walls">
-            {Array.from({ length: WALLS_PER_PLAYER }, (_, i) => (
-              <div
-                key={i}
-                className={`wall-pip opponent-pip ${i >= opponent.wallsRemaining ? 'used' : ''}`}
-                style={{ background: i >= opponent.wallsRemaining ? undefined : getCosmeticColor(opponent.wallSkin, 'var(--color-red)') }}
-              />
-            ))}
-          </div>
-        </div>
-        <div className={`player-timer ${gameState.currentTurn === opponentId && isUrgent ? 'urgent' : ''}`}>
-          {gameState.currentTurn === opponentId ? formatTime(timer) : '--:--'}
-        </div>
-      </div>
 
-      {/* Game Board */}
-      <div className="game-board-area">
-        <div className="game-board-wrapper">
+        <div className="area-board">
           <GameBoard
             gameState={gameState}
-            wallOrientation={wallOrientation}
-            isInteractive={isPlaying && (isMyTurn || gameState.mode === 'local')}
-            currentPlayerId={gameState.currentTurn}
+            viewAs={meId}
+            interactive={interactive}
+            mode={mode}
+            orientation={orientation}
+            boardThemeId={profile.equippedBoardTheme}
+            appTheme={profile.settings.theme}
+            pendingWall={pendingWall}
+            onPendingWallChange={setPendingWall}
+            onMove={onMove}
           />
         </div>
-      </div>
 
-      {/* My Bar (bottom) */}
-      <div className={`player-bar player-bar-bg ${gameState.currentTurn === localId ? 'active' : ''}`} style={{ position: 'relative' }}>
-        {activeEmote && (
-          <div 
-            style={{ 
-              position: 'absolute', 
-              top: '-40px', 
-              left: '20px', 
-              fontSize: '2.5rem', 
-              animation: 'bounceIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
-              filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.2))',
-              zIndex: 10
-            }}
-          >
-            {activeEmote.emoji}
-          </div>
-        )}
-        <div 
-          className="player-pawn" 
-          style={{ 
-            backgroundImage: `url(${myAvatarImg})`,
-            backgroundSize: 'cover',
-            border: `3px solid ${getCosmeticColor(me.pawnSkin, 'var(--color-blue)')}`
-          }} 
+        <PlayerCard
+          className="area-me"
+          player={me}
+          active={playing && gameState.currentTurn === meId}
+          timer={timerOn && gameState.currentTurn === meId ? gameState.turnTimer : null}
+          emote={emote?.playerId === meId ? emote : null}
+          isMe
         />
-        <div className="player-info">
-          <div className="player-name">{me.name}</div>
-          <div className="player-walls">
-            {Array.from({ length: WALLS_PER_PLAYER }, (_, i) => (
-              <div
-                key={i}
-                className={`wall-pip ${i >= me.wallsRemaining ? 'used' : ''}`}
-                style={{ background: i >= me.wallsRemaining ? undefined : getCosmeticColor(me.wallSkin, 'var(--color-blue)') }}
-              />
-            ))}
-          </div>
-        </div>
-        <div className={`player-timer ${gameState.currentTurn === localId && isUrgent ? 'urgent' : ''}`}>
-          {gameState.currentTurn === localId ? formatTime(timer) : '--:--'}
-        </div>
-      </div>
 
-      {/* Controls */}
-      <div className="game-controls">
-        <div className="wall-orientation-toggle" onClick={toggleOrientation}>
-          <span className={`wall-orient-icon ${wallOrientation === 'vertical' ? 'vertical' : ''}`}>
-            ━━
-          </span>
-          <span>{wallOrientation === 'horizontal' ? 'H-Wall' : 'V-Wall'}</span>
-        </div>
+        <div className="area-controls">
+          {match.kind === 'tutorial' && playing && <TutorialCoach gameState={gameState} mode={mode} pendingWall={!!pendingWall} />}
+          <div className={`turn-banner ${myTurn && playing ? 'is-mine' : ''}`}>{turnText}</div>
 
-        <div className={`turn-indicator ${!isMyTurn ? 'opponent-turn' : ''}`}>
-          {!isPlaying
-            ? 'Game Over'
-            : isMyTurn
-              ? gameState.mode === 'local' ? `Player ${localId + 1} Turn` : 'Your Turn'
-              : gameState.mode === 'local' ? `Player ${opponentId + 1} Turn` : 'Opponent\'s Turn'
-          }
-        </div>
-
-        <div className="emote-bar">
-          {availableEmotes.map(emote => (
-            <button key={emote.id} className="emote-btn" onClick={() => handleEmote(emote.preview)}>
-              {emote.preview}
+          <div className="mode-switch" role="group" aria-label="Action">
+            <button className={mode === 'move' ? 'on' : ''} disabled={!interactive} onClick={() => mode !== 'move' && toggleMode()}>
+              ● Move
             </button>
-          ))}
+            <button
+              className={mode === 'wall' ? 'on' : ''}
+              disabled={!canWall}
+              onClick={() => mode !== 'wall' && toggleMode()}
+              data-tutorial="wall-button"
+            >
+              ▬ Wall <span className="count">{mover?.wallsRemaining ?? 0}</span>
+            </button>
+            <button className="rotate" disabled={!canWall || mode !== 'wall'} onClick={rotate} aria-label="Rotate wall" title="Rotate (R)">
+              <span className="rotate-glyph">↻</span>
+              <span className={`rotate-icon ${orientation}`}>▬</span>
+            </button>
+          </div>
+
+          {pendingWall && (
+            <div className="pending-actions">
+              <button className="btn btn-primary btn-sm" onClick={() => onMove({ type: 'wall', wall: pendingWall })}>✓ Place wall</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setPendingWall(null)}>✕</button>
+            </div>
+          )}
+
+          {showEmotes && (
+            <div className="emote-bar">
+              {emotes.slice(0, 8).map(e => (
+                <button key={e.id} className="emote-btn" onClick={() => sendEmote(e.emoji)} aria-label={e.name}>{e.emoji}</button>
+              ))}
+            </div>
+          )}
+
+          <p className="controls-hint">
+            {mode === 'wall' ? 'Tap between squares to place · R rotates' : 'Tap a glowing dot to move · W for walls'}
+          </p>
         </div>
       </div>
 
-      {/* Modals */}
-      {showGameOver && <GameOverModal />}
-      
-      {showResignModal && (
-        <div className="modal-overlay">
-          <div className="modal-content text-center">
-            <h2 style={{ marginBottom: '16px', fontSize: '1.5rem', color: 'var(--color-text-primary)', letterSpacing: '-1px' }}>
-              Resign Game?
-            </h2>
-            <p style={{ marginBottom: '24px', opacity: 0.8 }}>
-              Are you sure you want to surrender? You will lose this match.
-            </p>
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
-              <button 
-                className="btn btn-ghost" 
-                onClick={() => {
-                  soundManager.play('click');
-                  setShowResignModal(false);
-                }}
-              >
-                Cancel
-              </button>
-              <button 
-                className="btn btn-danger" 
-                onClick={() => {
-                  soundManager.play('click');
-                  setShowResignModal(false);
-                  resign();
-                }}
-                style={{ background: 'var(--color-danger)', color: '#fff', border: 'none' }}
-              >
-                Yes, Resign
-              </button>
-            </div>
+      {state.rewards && <ResultsModal />}
+
+      {confirm && (
+        <Modal onClose={() => setConfirm(null)}>
+          <h2 className="modal-title">{confirm === 'resign' ? 'Resign this match?' : 'Leave this match?'}</h2>
+          <p className="modal-text">
+            {confirm === 'resign'
+              ? isLocal ? `${mover?.name} gives up and the other player wins.` : 'You will lose this match.'
+              : match.kind === 'online' ? 'Leaving counts as a loss.' : 'Your progress in this match will be lost.'}
+          </p>
+          <div className="modal-actions">
+            <button className="btn btn-ghost" onClick={() => setConfirm(null)}>Keep playing</button>
+            <button
+              className="btn btn-danger"
+              onClick={() => { setConfirm(null); if (confirm === 'resign') resign(); else quitMatch(); }}
+            >{confirm === 'resign' ? 'Resign' : 'Leave'}</button>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
