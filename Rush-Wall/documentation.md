@@ -64,6 +64,10 @@ Wall candidates are only walls that cut the rival's current shortest route, rank
 - Audio is suspended while any ad plays, and follows the site's `settings.muteAudio`.
 - `settings.disableChat` hides emotes in online matches.
 - **Invites**: `inviteLink({ room })` builds the friend link; `getInviteParam('room')` opens the online screen and joins automatically.
+- **Room Data** (CrazyGames multiplayer requirement): hosting a private room calls `updateRoom({ roomId, isJoinable: true, inviteParams: { room } })` so CrazyGames shows its invite button; a started match calls `updateRoom({ roomId, isJoinable: false })`; leaving calls `leftRoom()`. `addJoinRoomListener` takes a player who accepts an invite while the game is open straight to that room.
+- **Instant Multiplayer**: when `isInstantMultiplayer` is true, the game skips the tutorial and opens a private, joinable room right away.
+- **Rooms kept across rounds**: after an online match both players can press **Rematch** and play again over the same connection, with the other player moving first. "Find a new opponent" leaves the room.
+- **Lobby size** for the submission form: min 2, max 2.
 - `happytime()` fires on new ladder stars, rank-ups and finishing the tutorial.
 - New players land directly in the tutorial match (CrazyGames "land in gameplay" requirement).
 - **Accounts**: logged-in CrazyGames players automatically play under their CrazyGames username (not editable) and their profile picture is equipped the first time; they can still choose a shop avatar ("My CrazyGames picture" stays available in the Shop). Guests see a "Log in with CrazyGames" button on the Profile screen. The picture is shared with opponents and the leaderboard as its URL. In the SDK's local test mode you are logged in as the mock user "User1".
