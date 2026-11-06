@@ -1,6 +1,8 @@
 // ============================================================
-// Rush Wall — Core Game Types
+// Wall Duel — Core Game Types
 // ============================================================
+
+import { TURN_SECONDS } from '../config/balance';
 
 /** Player identifier */
 export type PlayerId = 0 | 1;
@@ -18,43 +20,34 @@ export interface Position {
 export type WallOrientation = 'horizontal' | 'vertical';
 
 /**
- * A wall on the board.
- * Walls are placed between cells. A wall is identified by:
- * - its top-left anchor position (row, col)
- * - its orientation
+ * A wall on the board, placed between cells and identified by its
+ * top-left anchor (row, col) and orientation.
  *
- * Horizontal wall at (r, c): blocks movement between
- *   (r, c)↔(r+1, c) and (r, c+1)↔(r+1, c+1)
+ * Horizontal wall at (r, c) blocks (r, c)↔(r+1, c) and (r, c+1)↔(r+1, c+1).
+ * Vertical wall at (r, c) blocks (r, c)↔(r, c+1) and (r+1, c)↔(r+1, c+1).
  *
- * Vertical wall at (r, c): blocks movement between
- *   (r, c)↔(r, c+1) and (r+1, c)↔(r+1, c+1)
+ * House rule: walls may overlap halfway or cross each other; only an
+ * exact duplicate is rejected, and no wall may cut a pawn off its goal.
  */
 export interface Wall {
-  row: number; // 0-7 (anchor row)
-  col: number; // 0-7 (anchor col)
+  row: number; // 0-7
+  col: number; // 0-7
   orientation: WallOrientation;
   placedBy: PlayerId;
 }
 
-/** Types of moves a player can make */
-export type MoveType = 'move' | 'wall';
-
-/** A pawn movement */
 export interface PawnMove {
   type: 'move';
   to: Position;
 }
 
-/** A wall placement */
 export interface WallMove {
   type: 'wall';
   wall: Omit<Wall, 'placedBy'>;
 }
 
-/** Any valid move */
 export type Move = PawnMove | WallMove;
 
-/** Game phase / lifecycle */
 export const GamePhase = {
   Setup: 'setup',
   Playing: 'playing',
@@ -62,7 +55,6 @@ export const GamePhase = {
 } as const;
 export type GamePhase = typeof GamePhase[keyof typeof GamePhase];
 
-/** How the game ended */
 export const GameEndReason = {
   GoalReached: 'goal_reached',
   Resignation: 'resignation',
@@ -71,7 +63,6 @@ export const GameEndReason = {
 } as const;
 export type GameEndReason = typeof GameEndReason[keyof typeof GameEndReason];
 
-/** Game mode */
 export const GameMode = {
   VsAI: 'vs_ai',
   Local: 'local',
@@ -79,75 +70,88 @@ export const GameMode = {
 } as const;
 export type GameMode = typeof GameMode[keyof typeof GameMode];
 
-/** AI difficulty level */
 export const AIDifficulty = {
   Easy: 'easy',
   Medium: 'medium',
   Hard: 'hard',
+  Nightmare: 'nightmare',
 } as const;
 export type AIDifficulty = typeof AIDifficulty[keyof typeof AIDifficulty];
 
-/** Player information */
-export interface Player {
-  id: PlayerId;
-  name: string;
-  rating: number;
-  wallsRemaining: number;
-  position: Position;
-  goalRow: Coord; // The row the player needs to reach to win
-  isAI: boolean;
-  aiDifficulty?: AIDifficulty;
-  /** Cosmetic skin ID */
+/** How a computer opponent plays: base engine plus a chance of a weaker move. */
+export interface AIProfile {
+  difficulty: AIDifficulty;
+  /** 0..1 chance to play a simple greedy move instead of the engine's choice. */
+  mistakeRate: number;
+}
+
+/** Cosmetic look of one player during a match. */
+export interface PlayerLook {
   pawnSkin: string;
-  /** Cosmetic wall skin ID */
   wallSkin: string;
-  /** Profile Avatar ID */
   avatar: string;
 }
 
-/** Full game state */
+export interface Player extends PlayerLook {
+  id: PlayerId;
+  name: string;
+  wallsRemaining: number;
+  position: Position;
+  goalRow: Coord;
+  isAI: boolean;
+  ai?: AIProfile;
+}
+
+export interface BoardState {
+  walls: Wall[];
+  /** Quick lookup of wall keys for collision detection */
+  wallSet: Set<string>;
+}
+
 export interface GameState {
   phase: GamePhase;
   mode: GameMode;
   board: BoardState;
   players: [Player, Player];
   currentTurn: PlayerId;
-  turnTimer: number; // Seconds remaining
+  turnTimer: number;
   moveHistory: Move[];
   winner: PlayerId | null;
   endReason: GameEndReason | null;
   turnCount: number;
 }
 
-/** Board state (walls placed on the board) */
-export interface BoardState {
-  walls: Wall[];
-  /** Quick lookup: set of wall keys for collision detection */
-  wallSet: Set<string>;
-}
+// ============================================================
+// Cosmetics
+// ============================================================
 
-/** Cosmetic item type */
 export type CosmeticType = 'pawn' | 'wall' | 'board' | 'emote' | 'avatar';
+export type Rarity = 'common' | 'rare' | 'epic' | 'legendary';
 
-/** Cosmetic item that can be purchased */
 export interface CosmeticItem {
   id: string;
   name: string;
   type: CosmeticType;
   price: number;
-  /** CSS color or gradient string */
-  preview: string;
-  /** Optional emoji/icon for the item */
-  icon?: string;
-  /** Whether this is a default unlocked item */
-  unlocked: boolean;
+  rarity: Rarity;
+  /** Free items every player owns from the start. */
+  free?: boolean;
 }
 
-/** Player profile saved via CrazyGames Data Module */
+// ============================================================
+// Player profile (saved through the CrazyGames Data module)
+// ============================================================
+
+export interface PlayerSettings {
+  soundOn: boolean;
+  theme: 'light' | 'dark';
+}
+
 export interface PlayerProfile {
   username: string;
-  rating: number;
   coins: number;
+  xp: number;
+  level: number;
   gamesPlayed: number;
   gamesWon: number;
   gamesLost: number;
@@ -160,30 +164,43 @@ export interface PlayerProfile {
   equippedAvatar: string;
   totalWallsPlaced: number;
   totalMovesPlayed: number;
+  /** Best star count (0-3) per ladder opponent id. */
+  ladderStars: Record<string, number>;
+  tutorialDone: boolean;
+  settings: PlayerSettings;
+  /** Set when the player is logged in to CrazyGames; their name and picture come from there. */
+  crazyGames: { username: string; avatarUrl: string } | null;
   createdAt: number;
   lastPlayedAt: number;
 }
 
-/** Default starting profile */
-export const DEFAULT_PROFILE: PlayerProfile = {
-  username: 'Player',
-  rating: 1000,
-  coins: 100, // Starting currency
-  gamesPlayed: 0,
-  gamesWon: 0,
-  gamesLost: 0,
-  winStreak: 0,
-  bestWinStreak: 0,
-  unlockedCosmetics: ['pawn_blue', 'pawn_red', 'wall_default', 'board_default'],
-  equippedPawnSkin: 'pawn_blue',
-  equippedWallSkin: 'wall_default',
-  equippedBoardTheme: 'board_default',
-  equippedAvatar: 'avatar_1',
-  totalWallsPlaced: 0,
-  totalMovesPlayed: 0,
-  createdAt: Date.now(),
-  lastPlayedAt: Date.now(),
-};
+export function createDefaultProfile(): PlayerProfile {
+  const now = Date.now();
+  return {
+    username: 'Player',
+    coins: 100,
+    xp: 0,
+    level: 1,
+    gamesPlayed: 0,
+    gamesWon: 0,
+    gamesLost: 0,
+    winStreak: 0,
+    bestWinStreak: 0,
+    unlockedCosmetics: [],
+    equippedPawnSkin: 'pawn_blue',
+    equippedWallSkin: 'wall_default',
+    equippedBoardTheme: 'board_default',
+    equippedAvatar: 'avatar_1',
+    totalWallsPlaced: 0,
+    totalMovesPlayed: 0,
+    ladderStars: {},
+    tutorialDone: false,
+    settings: { soundOn: true, theme: 'light' },
+    crazyGames: null,
+    createdAt: now,
+    lastPlayedAt: now,
+  };
+}
 
 // ============================================================
 // Constants
@@ -191,5 +208,4 @@ export const DEFAULT_PROFILE: PlayerProfile = {
 
 export const BOARD_SIZE = 9;
 export const WALLS_PER_PLAYER = 10;
-export const TURN_TIMER_SECONDS = 60;
-export const WALL_LENGTH = 2; // Each wall spans 2 cells
+export const TURN_TIMER_SECONDS = TURN_SECONDS;
