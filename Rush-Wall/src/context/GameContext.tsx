@@ -1,384 +1,485 @@
 // ============================================================
-// Rush Wall — Game Context (React State Management)
+// Wall Duel — App state: screens, matches, rewards, ads
 // ============================================================
 
-import React, { createContext, useContext, useReducer, useCallback, useEffect, useRef } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useReducer, useRef } from 'react';
 import {
   type GameState,
   type Move,
   type PlayerId,
   type PlayerProfile,
-  GamePhase,
+  type PlayerSettings,
+  type PlayerLook,
   GameMode,
+  GamePhase,
+  GameEndReason,
   AIDifficulty,
-  DEFAULT_PROFILE,
+  createDefaultProfile,
 } from '../game/types';
-import { GameManager, resetGameManager } from '../game/gameManager';
-import { loadProfile, recordGameResult } from '../store/cosmetics';
-import { updateLeaderboardWin, updateLeaderboardLoss, ensureLeaderboardEntry } from '../sdk/leaderboard';
+import { GameManager, type PlayerSetup } from '../game/gameManager';
+import { opponentOf } from '../game/rules';
+import { shortestPathLength } from '../game/pathfinding';
+import { loadProfile, updateProfile, recordMatch, addCoins, linkCrazyGamesAccount, resolveAvatar, type MatchKind, type MatchRewards } from '../store/profile';
+import { findRival, rivalAfter, type LadderRival } from '../progression/ladder';
 import { soundManager } from '../audio/soundManager';
 import * as sdk from '../sdk/crazygames';
+import type { MatchInfo, GameChannel } from '../sdk/multiplayer';
+import { MATCHES_PER_BREAK_AD, REWARDED_COIN_MULTIPLIER } from '../config/balance';
 
-// ============================================================
-// Types
-// ============================================================
+export type Screen = 'home' | 'game' | 'ladder' | 'shop' | 'profile' | 'leaderboard' | 'online' | 'howToPlay' | 'privacy';
 
-export type Screen = 'home' | 'game' | 'shop' | 'profile' | 'howToPlay' | 'matchmaking' | 'leaderboard';
+/** What kind of match is running, for rewards and the results screen. */
+export type ActiveMatch = MatchKind & { online?: MatchInfo };
+
+export interface Emote { playerId: PlayerId; emoji: string; at: number }
 
 interface AppState {
+  ready: boolean;
   screen: Screen;
-  gameState: GameState | null;
+  /** Screen to return to from pages like Privacy. */
+  previousScreen: Screen;
   profile: PlayerProfile;
-  sdkReady: boolean;
-  wallOrientation: 'horizontal' | 'vertical';
-  showGameOver: boolean;
-  coinsEarned: number;
-  theme: 'light' | 'dark';
+  gameState: GameState | null;
+  match: ActiveMatch | null;
   localPlayerId: PlayerId;
+  rewards: MatchRewards | null;
+  bonusClaimed: boolean;
+  emote: Emote | null;
+  chatDisabled: boolean;
+  /** Room code from an invite link, consumed by the online screen. */
+  pendingRoomCode: string | null;
 }
 
-type AppAction =
-  | { type: 'SET_SCREEN'; screen: Screen }
-  | { type: 'SET_GAME_STATE'; state: GameState }
-  | { type: 'SET_PROFILE'; profile: PlayerProfile }
-  | { type: 'SET_SDK_READY'; ready: boolean }
-  | { type: 'TOGGLE_WALL_ORIENTATION' }
-  | { type: 'SET_WALL_ORIENTATION'; orientation: 'horizontal' | 'vertical' }
-  | { type: 'SHOW_GAME_OVER'; coinsEarned: number }
-  | { type: 'HIDE_GAME_OVER' }
-  | { type: 'UPDATE_TIMER'; timer: number }
-  | { type: 'TOGGLE_THEME' }
-  | { type: 'SET_LOCAL_PLAYER_ID'; playerId: PlayerId };
+type Action =
+  | { type: 'READY'; profile: PlayerProfile; chatDisabled: boolean; pendingRoomCode: string | null }
+  | { type: 'SCREEN'; screen: Screen }
+  | { type: 'PROFILE'; profile: PlayerProfile }
+  | { type: 'MATCH_STARTED'; match: ActiveMatch; localPlayerId: PlayerId }
+  | { type: 'GAME_STATE'; gameState: GameState }
+  | { type: 'TIMER'; timer: number }
+  | { type: 'RESULTS'; rewards: MatchRewards }
+  | { type: 'BONUS_CLAIMED'; profile: PlayerProfile }
+  | { type: 'MATCH_CLOSED' }
+  | { type: 'EMOTE'; emote: Emote }
+  | { type: 'CHAT_DISABLED'; value: boolean }
+  | { type: 'ROOM_CODE_USED' };
 
-function reducer(state: AppState, action: AppAction): AppState {
+function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
-    case 'SET_SCREEN':
-      return { ...state, screen: action.screen };
-    case 'SET_GAME_STATE':
-      return { ...state, gameState: action.state };
-    case 'SET_PROFILE':
+    case 'READY':
+      return { ...state, ready: true, profile: action.profile, chatDisabled: action.chatDisabled, pendingRoomCode: action.pendingRoomCode };
+    case 'SCREEN':
+      return { ...state, screen: action.screen, previousScreen: state.screen };
+    case 'PROFILE':
       return { ...state, profile: action.profile };
-    case 'SET_SDK_READY':
-      return { ...state, sdkReady: action.ready };
-    case 'TOGGLE_WALL_ORIENTATION':
-      return {
-        ...state,
-        wallOrientation: state.wallOrientation === 'horizontal' ? 'vertical' : 'horizontal',
-      };
-    case 'SET_WALL_ORIENTATION':
-      return { ...state, wallOrientation: action.orientation };
-    case 'SHOW_GAME_OVER':
-      return { ...state, showGameOver: true, coinsEarned: action.coinsEarned };
-    case 'HIDE_GAME_OVER':
-      return { ...state, showGameOver: false, coinsEarned: 0 };
-    case 'UPDATE_TIMER':
-      if (!state.gameState) return state;
-      return {
-        ...state,
-        gameState: { ...state.gameState, turnTimer: action.timer },
-      };
-    case 'TOGGLE_THEME': {
-      const newTheme = state.theme === 'light' ? 'dark' : 'light';
-      localStorage.setItem('rw_theme', newTheme);
-      document.documentElement.setAttribute('data-theme', newTheme);
-      return { ...state, theme: newTheme };
-    }
-    case 'SET_LOCAL_PLAYER_ID':
-      return { ...state, localPlayerId: action.playerId };
-    default:
-      return state;
+    case 'MATCH_STARTED':
+      return { ...state, screen: 'game', match: action.match, localPlayerId: action.localPlayerId, rewards: null, bonusClaimed: false, emote: null };
+    case 'GAME_STATE':
+      return { ...state, gameState: action.gameState };
+    case 'TIMER':
+      return state.gameState ? { ...state, gameState: { ...state.gameState, turnTimer: action.timer } } : state;
+    case 'RESULTS':
+      return { ...state, rewards: action.rewards, profile: action.rewards.profile };
+    case 'BONUS_CLAIMED':
+      return { ...state, bonusClaimed: true, profile: action.profile };
+    case 'MATCH_CLOSED':
+      return { ...state, gameState: null, match: null, rewards: null, emote: null };
+    case 'EMOTE':
+      return { ...state, emote: action.emote };
+    case 'CHAT_DISABLED':
+      return { ...state, chatDisabled: action.value };
+    case 'ROOM_CODE_USED':
+      return { ...state, pendingRoomCode: null };
   }
 }
 
-// ============================================================
-// Context
-// ============================================================
-
-interface GameContextType {
+interface GameContextValue {
   state: AppState;
-  dispatch: React.Dispatch<AppAction>;
-  gameManager: React.RefObject<GameManager | null>;
-  startGame: (mode: GameMode, difficulty?: AIDifficulty) => void;
-  startOnlineGame: (matchInfo: import('../sdk/multiplayer').MatchInfo) => void;
-  makeMove: (move: Move) => boolean;
-  resign: () => void;
-  goHome: () => void;
-  refreshProfile: () => void;
-  toggleTheme: () => void;
+  navigate(screen: Screen): void;
+  startTutorial(): void;
+  startAIMatch(difficulty: AIDifficulty, rivalId?: string): void;
+  startLocalMatch(): void;
+  startOnlineMatch(info: MatchInfo): void;
+  /** Play a move for whoever is to move on this device. */
+  makeMove(move: Move): boolean;
+  resign(): void;
+  sendEmote(emoji: string): void;
+  /** Leave the results screen: rematch, next ladder rival, or home. Shows the paced break ad. */
+  continueAfterMatch(next: 'rematch' | 'next' | 'home'): Promise<void>;
+  /** Leave a match in progress (counts as a loss online). */
+  quitMatch(): void;
+  claimRewardedBonus(): Promise<boolean>;
+  setProfile(profile: PlayerProfile): void;
+  updateSettings(settings: Partial<PlayerSettings>): void;
+  consumeRoomCode(): void;
+  /** Open the CrazyGames log-in popup (guests only). */
+  loginWithCrazyGames(): Promise<void>;
 }
 
-const GameContext = createContext<GameContextType | null>(null);
+const GameContext = createContext<GameContextValue | null>(null);
 
-export function useGame(): GameContextType {
+export function useGame(): GameContextValue {
   const ctx = useContext(GameContext);
-  if (!ctx) throw new Error('useGame must be used within GameProvider');
+  if (!ctx) throw new Error('useGame must be used inside GameProvider');
   return ctx;
 }
 
-// ============================================================
-// Provider
-// ============================================================
-
-const initialState: AppState = {
-  screen: 'home',
-  gameState: null,
-  profile: DEFAULT_PROFILE,
-  sdkReady: false,
-  wallOrientation: 'horizontal',
-  showGameOver: false,
-  coinsEarned: 0,
-  theme: (localStorage.getItem('rw_theme') as 'light' | 'dark') || 'light',
-  localPlayerId: 0,
+const TUTORIAL_COACH: PlayerSetup = {
+  name: 'Coach',
+  avatar: 'avatar_2',
+  pawnSkin: 'pawn_red',
+  wallSkin: 'wall_default',
+  ai: { difficulty: AIDifficulty.Easy, mistakeRate: 0.5 },
 };
 
+const QUICK_AI_NAMES: Record<AIDifficulty, string> = {
+  easy: 'Bot · Easy',
+  medium: 'Bot · Medium',
+  hard: 'Bot · Hard',
+  nightmare: 'Bot · Nightmare',
+};
+
+/** Keep the two pawns visually distinct when both players picked the same skin. */
+function distinctLooks(mine: PlayerLook, theirs: PlayerLook): PlayerLook {
+  if (mine.pawnSkin !== theirs.pawnSkin) return theirs;
+  return { ...theirs, pawnSkin: mine.pawnSkin === 'pawn_red' ? 'pawn_blue' : 'pawn_red' };
+}
+
+const myLook = (p: PlayerProfile): PlayerLook => ({ pawnSkin: p.equippedPawnSkin, wallSkin: p.equippedWallSkin, avatar: resolveAvatar(p) });
+
 export function GameProvider({ children }: { children: React.ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, initialState);
+  const [state, dispatch] = useReducer(reducer, {
+    ready: false,
+    screen: 'home',
+    previousScreen: 'home',
+    // The real profile is read after the SDK is ready (it may live in the CrazyGames Data module).
+    profile: createDefaultProfile(),
+    gameState: null,
+    match: null,
+    localPlayerId: 0,
+    rewards: null,
+    bonusClaimed: false,
+    emote: null,
+    chatDisabled: false,
+    pendingRoomCode: null,
+  });
+
   const gmRef = useRef<GameManager | null>(null);
-  const localPlayerIdRef = useRef<PlayerId>(0);
+  const channelRef = useRef<GameChannel | null>(null);
+  const matchRef = useRef<ActiveMatch | null>(null);
+  const localIdRef = useRef<PlayerId>(0);
+  const finishedMatchesRef = useRef(0);
+  const chatDisabledRef = useRef(false);
+  useEffect(() => { chatDisabledRef.current = state.chatDisabled; }, [state.chatDisabled]);
 
-  // Initialize SDK, profile, and theme on mount
+  // ----------------------------------------------------------
+  // Boot: SDK → profile → land in gameplay for new players
+  // ----------------------------------------------------------
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', state.theme);
-    async function init() {
+    let cancelled = false;
+    (async () => {
+      await sdk.initSDK();
       sdk.loadingStart();
-      soundManager.init();
-      const sdkOk = await sdk.initSDK();
-      dispatch({ type: 'SET_SDK_READY', ready: sdkOk });
+      let profile = loadProfile();
+      // Logged-in CrazyGames players play under their account name and picture.
+      const crazyUser = await sdk.getCrazyUser();
+      if (crazyUser) profile = linkCrazyGamesAccount(crazyUser);
+      sdk.onCrazyLogin(user => {
+        if (user) dispatch({ type: 'PROFILE', profile: linkCrazyGamesAccount(user) });
+      });
+      applyTheme(profile.settings.theme);
+      soundManager.setMuted('player', !profile.settings.soundOn);
 
-      const profile = loadProfile();
-      dispatch({ type: 'SET_PROFILE', profile });
+      const platform = sdk.getPlatformSettings();
+      soundManager.setMuted('platform', platform.muteAudio);
+      sdk.onPlatformSettingsChange(s => {
+        soundManager.setMuted('platform', s.muteAudio);
+        dispatch({ type: 'CHAT_DISABLED', value: s.disableChat });
+      });
+      sdk.onAdPlayback(playing => soundManager.setMuted('ad', playing));
 
+      const roomCode = sdk.getInviteParam('room');
       sdk.loadingStop();
+      if (cancelled) return;
+      dispatch({ type: 'READY', profile, chatDisabled: platform.disableChat, pendingRoomCode: roomCode });
+
+      if (roomCode) dispatch({ type: 'SCREEN', screen: 'online' });
+      else if (!profile.tutorialDone) startTutorialRef.current();
+    })();
+
+    // Browsers only allow audio after a user gesture.
+    const unlock = () => soundManager.unlock();
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+  }, []);
+
+  // ----------------------------------------------------------
+  // Match lifecycle
+  // ----------------------------------------------------------
+  const closeMatch = useCallback(() => {
+    gmRef.current?.destroy();
+    gmRef.current = null;
+    channelRef.current?.close();
+    channelRef.current = null;
+    matchRef.current = null;
+    sdk.gameplayStop();
+  }, []);
+
+  const handleGameOver = useCallback((gm: GameManager, winner: PlayerId, reason: GameEndReason) => {
+    const gs = gm.getState();
+    const match = matchRef.current;
+    if (!match) return;
+    const localId = localIdRef.current;
+    // Same-device matches always count as a win for this device (as in the original game).
+    const won = match.kind === 'local' ? true : winner === localId;
+    const rival = gs.players[opponentOf(localId)];
+
+    if (match.kind === 'online') {
+      if (reason === GameEndReason.Timeout && winner !== localId) channelRef.current?.sendTimeout();
+      void import('../sdk/leaderboard').then(m => m.recordOnlineResult(won)).catch(e => console.warn('[Leaderboard]', e));
+      // Keep the channel a moment so final messages arrive, then close it.
+      const channel = channelRef.current;
+      channelRef.current = null;
+      setTimeout(() => channel?.close(), 1500);
     }
-    init();
+
+    const rewards = recordMatch({
+      match,
+      won,
+      movesPlayed: gs.moveHistory.length,
+      wallsPlaced: gs.board.walls.filter(w => w.placedBy === localId).length,
+      rivalStepsLeft: Math.max(0, shortestPathLength(gs.board, rival.position, rival.goalRow)),
+    });
+
+    sdk.gameplayStop();
+    finishedMatchesRef.current++;
+    soundManager.play(won || match.kind === 'local' ? 'win' : 'lose');
+    if (rewards.coins > 0) setTimeout(() => soundManager.play('coinEarn'), 500);
+    if (rewards.levelAfter > rewards.levelBefore) setTimeout(() => soundManager.play('levelUp'), 900);
+    if (rewards.newStars > 0 || rewards.newRank || match.kind === 'tutorial') sdk.happyTime();
+    dispatch({ type: 'RESULTS', rewards });
   }, []);
 
-  // Setup game manager event listeners
-  const setupListeners = useCallback((gm: GameManager) => {
-    gm.on('stateChanged', (data) => {
-      dispatch({ type: 'SET_GAME_STATE', state: { ...(data as GameState) } });
-    });
-
-    gm.on('moveMade', (data) => {
-      const { move } = data as { playerId: PlayerId; move: Move };
-      if (move.type === 'move') {
-        soundManager.play('pawnMove');
-      } else {
-        soundManager.play('wallPlace');
-      }
-    });
-
-    gm.on('turnChanged', () => {
-      soundManager.play('turnStart');
-    });
-
-    gm.on('timerTick', (data) => {
-      const { timer } = data as { timer: number; currentTurn: PlayerId };
-      dispatch({ type: 'UPDATE_TIMER', timer });
-
-      if (timer <= 10 && timer > 0) {
-        soundManager.play('timerUrgent');
-      }
-    });
-
-    gm.on('gameOver', (data) => {
-      const { winner } = data as { winner: PlayerId; reason: string };
-      const gs = gm.getState();
-      const currentLocalId = localPlayerIdRef.current;
-      const playerWon = winner === currentLocalId;
-
-      // Calculate coins earned
-      let coinsEarned = 0;
-      if (gs.mode === 'local') {
-        if (winner === 0 || winner === 1) coinsEarned = 50;
-      } else if (gs.mode === 'vs_ai' && playerWon) {
-        const diff = gs.players[1].aiDifficulty;
-        if (diff === 'easy') coinsEarned = 20;
-        else if (diff === 'medium') coinsEarned = 60;
-        else if (diff === 'hard') coinsEarned = 100;
-      } else if (gs.mode === 'online' && playerWon) {
-        coinsEarned = 80;
-      }
-
-      // Record result
-      const wallsPlaced = gs.board.walls.filter(w => w.placedBy === 0).length;
-      const profile = recordGameResult(playerWon, gs.moveHistory.length, wallsPlaced, coinsEarned);
-      dispatch({ type: 'SET_PROFILE', profile });
-
-      // Update global leaderboard for online games
-      if (gs.mode === GameMode.Online) {
-        if (playerWon) {
-          updateLeaderboardWin().catch(err => console.error('Failed to update leaderboard:', err));
-        } else {
-          updateLeaderboardLoss().catch(err => console.error('Failed to update leaderboard:', err));
-        }
-      }
-
-      if (playerWon) {
-        soundManager.play('win');
-        soundManager.play('coinEarn');
-        sdk.happyTime();
-      } else {
-        soundManager.play('lose');
-      }
-
-      sdk.gameplayStop();
-      dispatch({ type: 'SHOW_GAME_OVER', coinsEarned });
-
-    });
-
-    gm.on('invalidMove', () => {
-      soundManager.play('invalidMove');
-    });
-  }, []);
-
-  const startGame = useCallback((mode: GameMode, difficulty: AIDifficulty = AIDifficulty.Medium) => {
-    const profile = loadProfile();
-    const gm = resetGameManager();
+  const launch = useCallback((options: { match: ActiveMatch; mode: GameMode; players: [PlayerSetup, PlayerSetup]; localPlayers: PlayerId[]; localPlayerId: PlayerId; timer?: boolean }) => {
+    closeMatch();
+    const gm = new GameManager({ mode: options.mode, players: options.players, localPlayers: options.localPlayers, timerEnabled: options.timer ?? true });
     gmRef.current = gm;
-    setupListeners(gm);
+    matchRef.current = options.match;
+    localIdRef.current = options.localPlayerId;
 
-    const p2Name = mode === GameMode.Local ? 'Player 2' : undefined;
-    gm.startGame(
-      mode, 
-      difficulty, 
-      profile.username, 
-      p2Name, 
-      profile.equippedPawnSkin, 
-      profile.equippedWallSkin,
-      undefined,
-      undefined,
-      profile.equippedAvatar,
-      'avatar_1'
-    );
+    gm.on('stateChanged', gameState => dispatch({ type: 'GAME_STATE', gameState }));
+    gm.on('timerTick', ({ timer, currentTurn }) => {
+      dispatch({ type: 'TIMER', timer });
+      if (timer > 0 && timer <= 10 && options.localPlayers.includes(currentTurn)) soundManager.play('timerUrgent');
+    });
+    gm.on('moveMade', ({ move }) => soundManager.play(move.type === 'move' ? 'pawnMove' : 'wallPlace'));
+    gm.on('invalidMove', () => soundManager.play('invalidMove'));
+    gm.on('gameOver', ({ winner, reason }) => handleGameOver(gm, winner, reason));
 
-    localPlayerIdRef.current = 0;
-    dispatch({ type: 'SET_LOCAL_PLAYER_ID', playerId: 0 });
-    dispatch({ type: 'SET_SCREEN', screen: 'game' });
-    dispatch({ type: 'HIDE_GAME_OVER' });
+    dispatch({ type: 'MATCH_STARTED', match: options.match, localPlayerId: options.localPlayerId });
+    gm.start();
     sdk.gameplayStart();
-  }, [setupListeners]);
+  }, [closeMatch, handleGameOver]);
 
-  const startOnlineGame = useCallback((matchInfo: import('../sdk/multiplayer').MatchInfo) => {
-    const profile = loadProfile();
-    const gm = resetGameManager();
-    gmRef.current = gm;
-    setupListeners(gm);
+  const startTutorial = useCallback(() => {
+    const p = loadProfile();
+    const me: PlayerSetup = { name: p.username, ...myLook(p) };
+    launch({
+      match: { kind: 'tutorial' },
+      mode: GameMode.VsAI,
+      players: [me, { ...TUTORIAL_COACH, ...distinctLooks(myLook(p), TUTORIAL_COACH) }],
+      localPlayers: [0],
+      localPlayerId: 0,
+      timer: false,
+    });
+  }, [launch]);
+  const startTutorialRef = useRef(startTutorial);
+  useEffect(() => { startTutorialRef.current = startTutorial; }, [startTutorial]);
 
-    // Host is always Player 0, Guest is always Player 1
-    const localPlayerId: PlayerId = matchInfo.isHost ? 0 : 1;
-    const opponentName = matchInfo.opponentName || 'Opponent';
+  const startAIMatch = useCallback((difficulty: AIDifficulty, rivalId?: string) => {
+    const p = loadProfile();
+    const rival: LadderRival | undefined = rivalId ? findRival(rivalId) : undefined;
+    const ai = rival?.ai ?? { difficulty, mistakeRate: 0 };
+    const look: PlayerLook = rival
+      ? { pawnSkin: rival.pawnSkin, wallSkin: rival.wallSkin, avatar: rival.avatar }
+      : { pawnSkin: 'pawn_red', wallSkin: 'wall_default', avatar: 'avatar_7' };
+    launch({
+      match: { kind: 'ai', difficulty: ai.difficulty, rivalId },
+      mode: GameMode.VsAI,
+      players: [
+        { name: p.username, ...myLook(p) },
+        { name: rival?.name ?? QUICK_AI_NAMES[ai.difficulty], ai, ...distinctLooks(myLook(p), look) },
+      ],
+      localPlayers: [0],
+      localPlayerId: 0,
+    });
+  }, [launch]);
 
-    // Set up names: Player 0 is host, Player 1 is guest
-    const p0Name = matchInfo.isHost ? profile.username : opponentName;
-    const p1Name = matchInfo.isHost ? opponentName : profile.username;
+  const startLocalMatch = useCallback(() => {
+    const p = loadProfile();
+    launch({
+      match: { kind: 'local' },
+      mode: GameMode.Local,
+      players: [
+        { name: p.username, ...myLook(p) },
+        { name: 'Player 2', ...distinctLooks(myLook(p), { pawnSkin: 'pawn_red', wallSkin: 'wall_default', avatar: 'avatar_2' }) },
+      ],
+      localPlayers: [0, 1],
+      localPlayerId: 0,
+    });
+  }, [launch]);
 
-    // Set up skins: Player 0 skins belong to host, Player 1 skins belong to guest
-    const p0PawnSkin = matchInfo.isHost ? profile.equippedPawnSkin : (matchInfo.opponentPawnSkin || 'pawn_red');
-    const p0WallSkin = matchInfo.isHost ? profile.equippedWallSkin : (matchInfo.opponentWallSkin || 'wall_default');
-    const p1PawnSkin = matchInfo.isHost ? (matchInfo.opponentPawnSkin || 'pawn_red') : profile.equippedPawnSkin;
-    const p1WallSkin = matchInfo.isHost ? (matchInfo.opponentWallSkin || 'wall_default') : profile.equippedWallSkin;
-    const p0Avatar = matchInfo.isHost ? profile.equippedAvatar : (matchInfo.opponentAvatar || 'avatar_1');
-    const p1Avatar = matchInfo.isHost ? (matchInfo.opponentAvatar || 'avatar_1') : profile.equippedAvatar;
+  const startOnlineMatch = useCallback((info: MatchInfo) => {
+    const p = loadProfile();
+    const localId: PlayerId = info.isHost ? 0 : 1;
+    const remoteId = opponentOf(localId);
+    const me: PlayerSetup = { name: p.username, ...myLook(p) };
+    const them: PlayerSetup = { name: info.opponent.name || 'Opponent', ...distinctLooks(myLook(p), info.opponent) };
+    const players: [PlayerSetup, PlayerSetup] = info.isHost ? [me, them] : [them, me];
 
-    gm.startGame(
-      GameMode.Online, 
-      undefined, 
-      p0Name, 
-      p1Name, 
-      p0PawnSkin, 
-      p0WallSkin, 
-      p1PawnSkin, 
-      p1WallSkin,
-      p0Avatar,
-      p1Avatar
-    );
+    launch({ match: { kind: 'online', online: info }, mode: GameMode.Online, players, localPlayers: [localId], localPlayerId: localId });
 
-    localPlayerIdRef.current = localPlayerId;
-    dispatch({ type: 'SET_LOCAL_PLAYER_ID', playerId: localPlayerId });
-    dispatch({ type: 'SET_SCREEN', screen: 'game' });
-    dispatch({ type: 'HIDE_GAME_OVER' });
-    sdk.gameplayStart();
-
-    // Ensure this player has a leaderboard entry (even with 0 wins)
-    ensureLeaderboardEntry().catch(err => console.warn('Leaderboard entry:', err));
-
-    // The opponent's PlayerId from our perspective
-    const remotePlayerId: PlayerId = matchInfo.isHost ? 1 : 0;
-
-    import('../sdk/multiplayer').then(({ joinGameChannel, leaveGameChannel }) => {
-      joinGameChannel(matchInfo.gameId, (remoteMove) => {
-        // Apply opponent's move directly — no mirroring needed.
-        // Both clients share the same board layout. The move coordinates
-        // are absolute board positions.
-        if (gmRef.current) {
-          gmRef.current.makeMove(remotePlayerId, remoteMove);
-        }
-      }, () => {
-        // Opponent disconnected — they forfeit
-        if (gmRef.current) {
-          const gs = gmRef.current.getState();
-          if (gs.phase === GamePhase.Playing) {
-            gmRef.current.resign(remotePlayerId);
-          }
-        }
+    void import('../sdk/multiplayer').then(({ GameChannel }) => {
+      const gm = gmRef.current;
+      if (!gm) return;
+      const channel = new GameChannel(info.gameId, {
+        onMove: move => {
+          if (!gm.makeMove(remoteId, move)) console.warn('[Online] rejected remote move (out of sync?)', move);
+        },
+        onEmote: emoji => {
+          if (!chatDisabledRef.current) dispatch({ type: 'EMOTE', emote: { playerId: remoteId, emoji, at: Date.now() } });
+        },
+        onResign: () => gm.forceEnd(localId, GameEndReason.Resignation),
+        onTimeout: () => gm.forceEnd(localId, GameEndReason.Timeout),
+        onGone: () => gm.forceEnd(localId, GameEndReason.Disconnect),
       });
-
-      // Cleanup when destroying manager
-      const oldDestroy = gm.destroy.bind(gm);
-      gm.destroy = () => {
-        leaveGameChannel();
-        oldDestroy();
-      };
+      channelRef.current = channel;
+      void channel.connect();
+      void import('../sdk/leaderboard').then(m => m.syncLeaderboardEntry()).catch(() => undefined);
     });
-  }, [setupListeners]);
+  }, [launch]);
 
+  // ----------------------------------------------------------
+  // In-match actions
+  // ----------------------------------------------------------
   const makeMove = useCallback((move: Move): boolean => {
-    if (!gmRef.current) return false;
-    const gs = gmRef.current.getState();
-    const success = gmRef.current.makeMove(gs.currentTurn, move);
-    if (success && gs.mode === GameMode.Online) {
-      import('../sdk/multiplayer').then(({ sendMove }) => {
-        sendMove(move);
-      });
-    }
-    return success;
+    const gm = gmRef.current;
+    const match = matchRef.current;
+    if (!gm || !match) return false;
+    const gs = gm.getState();
+    const mover = gs.currentTurn;
+    if (match.kind !== 'local' && mover !== localIdRef.current) return false;
+    const ok = gm.makeMove(mover, move);
+    if (ok && match.kind === 'online') channelRef.current?.sendMove(move);
+    return ok;
   }, []);
 
   const resign = useCallback(() => {
-    if (!gmRef.current) return;
-    gmRef.current.resign(state.localPlayerId);
-  }, [state.localPlayerId]);
+    const gm = gmRef.current;
+    if (!gm) return;
+    const match = matchRef.current;
+    // In local mode, the player whose turn it is resigns.
+    const loser = match?.kind === 'local' ? gm.getState().currentTurn : localIdRef.current;
+    if (match?.kind === 'online') channelRef.current?.sendResign();
+    gm.resign(loser);
+  }, []);
 
-  const goHome = useCallback(() => {
-    if (gmRef.current) {
-      const gs = gmRef.current.getState();
-      if (gs.phase === GamePhase.Playing) {
-        sdk.gameplayStop();
-      }
-      gmRef.current.destroy();
-      gmRef.current = null;
+  const sendEmote = useCallback((emoji: string) => {
+    const gs = gmRef.current?.getState();
+    if (!gs) return;
+    const from = matchRef.current?.kind === 'local' ? gs.currentTurn : localIdRef.current;
+    soundManager.play('emote');
+    dispatch({ type: 'EMOTE', emote: { playerId: from, emoji, at: Date.now() } });
+    if (matchRef.current?.kind === 'online') channelRef.current?.sendEmote(emoji);
+  }, []);
+
+  const quitMatch = useCallback(() => {
+    const gm = gmRef.current;
+    if (gm && gm.getState().phase === GamePhase.Playing && matchRef.current?.kind === 'online') {
+      channelRef.current?.leave();
+      void import('../sdk/leaderboard').then(m => m.recordOnlineResult(false)).catch(() => undefined);
     }
-    dispatch({ type: 'SET_SCREEN', screen: 'home' });
-    dispatch({ type: 'SET_GAME_STATE', state: null as any });
-    dispatch({ type: 'HIDE_GAME_OVER' });
-  }, []);
+    closeMatch();
+    dispatch({ type: 'MATCH_CLOSED' });
+    dispatch({ type: 'SCREEN', screen: 'home' });
+  }, [closeMatch]);
 
-  const refreshProfile = useCallback(() => {
-    const profile = loadProfile();
-    dispatch({ type: 'SET_PROFILE', profile });
-  }, []);
+  const continueAfterMatch = useCallback(async (next: 'rematch' | 'next' | 'home') => {
+    const match = state.match;
+    if (finishedMatchesRef.current > 0 && finishedMatchesRef.current % MATCHES_PER_BREAK_AD === 0) {
+      finishedMatchesRef.current = 0;
+      await sdk.requestBreakAd();
+    }
+    closeMatch();
+    dispatch({ type: 'MATCH_CLOSED' });
 
-  const toggleTheme = useCallback(() => {
+    if (next === 'home' || !match) {
+      dispatch({ type: 'SCREEN', screen: 'home' });
+      return;
+    }
+    if (match.kind === 'local') startLocalMatch();
+    else if (match.kind === 'tutorial') dispatch({ type: 'SCREEN', screen: 'home' });
+    else if (match.kind === 'online') dispatch({ type: 'SCREEN', screen: 'online' });
+    else if (match.kind === 'ai') {
+      const rivalId = next === 'next' ? nextRivalId(match.rivalId) : match.rivalId;
+      const rival = rivalId ? findRival(rivalId) : undefined;
+      startAIMatch(rival?.ai.difficulty ?? match.difficulty, rivalId);
+    }
+  }, [state.match, closeMatch, startLocalMatch, startAIMatch]);
+
+  const claimRewardedBonus = useCallback(async () => {
+    const rewards = state.rewards;
+    if (!rewards || state.bonusClaimed || rewards.matchCoins <= 0) return false;
+    const watched = await sdk.requestRewardedAd();
+    if (!watched) return false;
+    const profile = addCoins(rewards.matchCoins * (REWARDED_COIN_MULTIPLIER - 1));
+    soundManager.play('coinEarn');
+    dispatch({ type: 'BONUS_CLAIMED', profile });
+    return true;
+  }, [state.rewards, state.bonusClaimed]);
+
+  // ----------------------------------------------------------
+  // Profile & navigation
+  // ----------------------------------------------------------
+  const navigate = useCallback((screen: Screen) => {
     soundManager.play('click');
-    dispatch({ type: 'TOGGLE_THEME' });
+    dispatch({ type: 'SCREEN', screen });
   }, []);
 
-  return (
-    <GameContext.Provider
-      value={{ state, dispatch, gameManager: gmRef, startGame, startOnlineGame, makeMove, resign, goHome, refreshProfile, toggleTheme }}
-    >
-      {children}
-    </GameContext.Provider>
-  );
+  const setProfile = useCallback((profile: PlayerProfile) => dispatch({ type: 'PROFILE', profile }), []);
+
+  const updateSettings = useCallback((settings: Partial<PlayerSettings>) => {
+    const profile = updateProfile({ settings: { ...loadProfile().settings, ...settings } });
+    applyTheme(profile.settings.theme);
+    soundManager.setMuted('player', !profile.settings.soundOn);
+    dispatch({ type: 'PROFILE', profile });
+  }, []);
+
+  const consumeRoomCode = useCallback(() => dispatch({ type: 'ROOM_CODE_USED' }), []);
+
+  const loginWithCrazyGames = useCallback(async () => {
+    const user = await sdk.showCrazyLogin();
+    if (user) dispatch({ type: 'PROFILE', profile: linkCrazyGamesAccount(user) });
+  }, []);
+
+  const value: GameContextValue = {
+    state, navigate, startTutorial, startAIMatch, startLocalMatch, startOnlineMatch,
+    makeMove, resign, sendEmote, continueAfterMatch, quitMatch, claimRewardedBonus,
+    setProfile, updateSettings, consumeRoomCode, loginWithCrazyGames,
+  };
+
+  return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
+}
+
+function nextRivalId(currentId?: string): string | undefined {
+  return currentId ? rivalAfter(currentId)?.id ?? currentId : undefined;
+}
+
+function applyTheme(theme: 'light' | 'dark'): void {
+  document.documentElement.setAttribute('data-theme', theme);
 }
