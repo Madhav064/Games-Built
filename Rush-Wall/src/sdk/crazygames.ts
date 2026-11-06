@@ -34,6 +34,13 @@ interface CrazySDK {
     isInstantMultiplayer?: boolean;
     settings: CGSettings;
     addSettingsChangeListener(listener: (settings: CGSettings) => void): void;
+    // Room Data (replaces the deprecated invite button)
+    updateRoom?(room: { roomId?: string; isJoinable?: boolean; inviteParams?: Record<string, string> }): void;
+    leftRoom?(): void;
+    addJoinRoomListener?(listener: (inviteParams: Record<string, string>) => void): void;
+    // Deprecated fallback for older SDK builds
+    showInviteButton?(params: Record<string, string>): string;
+    hideInviteButton?(): void;
   };
   ad: { requestAd(type: 'midgame' | 'rewarded', callbacks: CGAdCallbacks): void };
   user: {
@@ -167,8 +174,47 @@ export function getInviteParam(name: string): string | null {
   return fromSdk ?? new URLSearchParams(window.location.search).get(name);
 }
 
+/** Started from the CrazyGames party UI: go straight into a joinable private room. */
 export function isInstantMultiplayer(): boolean {
   return !!active()?.game.isInstantMultiplayer;
+}
+
+// ------------------------------------------------------------
+// Room Data — tells CrazyGames where the player is, so it can show
+// its invite button and let friends join.
+// ------------------------------------------------------------
+/** The player is waiting in a private room that a friend can join. */
+export function reportJoinableRoom(roomCode: string): void {
+  const s = active();
+  if (!s) return;
+  if (s.game.updateRoom) {
+    safely('updateRoom', () => s.game.updateRoom!({ roomId: roomCode, isJoinable: true, inviteParams: { room: roomCode } }), undefined);
+  } else {
+    safely('showInviteButton', () => s.game.showInviteButton?.({ room: roomCode }), undefined);
+  }
+}
+
+/** The player is in a full room (a match with two players). */
+export function reportFullRoom(roomId: string): void {
+  const s = active();
+  if (!s) return;
+  if (s.game.updateRoom) safely('updateRoom', () => s.game.updateRoom!({ roomId, isJoinable: false }), undefined);
+  else safely('hideInviteButton', () => s.game.hideInviteButton?.(), undefined);
+}
+
+/** The player left their room. */
+export function reportLeftRoom(): void {
+  const s = active();
+  if (!s) return;
+  if (s.game.leftRoom) safely('leftRoom', () => s.game.leftRoom!(), undefined);
+  else safely('hideInviteButton', () => s.game.hideInviteButton?.(), undefined);
+}
+
+/** A friend's invite was accepted while the game is already open. */
+export function onJoinRoomRequest(listener: (roomCode: string) => void): void {
+  safely('addJoinRoomListener', () => active()?.game.addJoinRoomListener?.(params => {
+    if (params?.room) listener(params.room);
+  }), undefined);
 }
 
 function fallbackInviteLink(params: Record<string, string>): string {
