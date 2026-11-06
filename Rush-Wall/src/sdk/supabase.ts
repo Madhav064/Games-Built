@@ -1,39 +1,38 @@
-import { createClient } from '@supabase/supabase-js';
+// ============================================================
+// Wall Duel — Supabase client (loaded lazily, only for online
+// play and the leaderboard, so the first load stays small).
+// ============================================================
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+import type { SupabaseClient } from '@supabase/supabase-js';
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error("Missing Supabase credentials in .env");
+const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+
+let clientPromise: Promise<SupabaseClient> | null = null;
+
+export const isOnlineConfigured = (): boolean => !!url && !!anonKey;
+
+export function getSupabase(): Promise<SupabaseClient> {
+  if (!isOnlineConfigured()) return Promise.reject(new Error('Online play is not configured (missing Supabase env vars).'));
+  clientPromise ??= import('@supabase/supabase-js').then(({ createClient }) => createClient(url!, anonKey!));
+  return clientPromise;
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
-/**
- * Ensures the user is anonymously authenticated with Supabase.
- */
-export async function ensureAuthenticated() {
+/** Signs in anonymously if needed and returns the user id. */
+export async function getUserId(): Promise<string> {
+  const supabase = await getSupabase();
   const { data: { session } } = await supabase.auth.getSession();
-  if (!session) {
-    const { error: signInError } = await supabase.auth.signInAnonymously();
-    if (signInError) {
-      console.error("Failed to sign in anonymously:", signInError);
-    }
-  }
-}
+  if (session?.user.id) return session.user.id;
 
-/**
- * Get current user ID, falling back to a locally generated ID if auth is disabled
- */
-export async function getCurrentUserId(): Promise<string> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (user?.id) return user.id;
+  const { data, error } = await supabase.auth.signInAnonymously();
+  if (data.user?.id) return data.user.id;
 
-  // Fallback if Supabase anonymous auth is not enabled in the dashboard
-  let localId = localStorage.getItem('rw_local_uid');
+  // Anonymous auth disabled in the Supabase dashboard: fall back to a device id.
+  console.warn('[Supabase] Anonymous sign-in failed, using a device id.', error);
+  let localId = localStorage.getItem('wallduel_device_id');
   if (!localId) {
-    localId = 'anon_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
-    localStorage.setItem('rw_local_uid', localId);
+    localId = `device_${crypto.randomUUID()}`;
+    localStorage.setItem('wallduel_device_id', localId);
   }
   return localId;
 }
