@@ -1,0 +1,20 @@
+<!doctype html>
+<!--
+  Wall Duel — preview-video capture page (dev only, not part of the game build).
+  Run `npm run dev`, then open /branding/capture/?layout=landscape (or portrait).
+  The page shows the cover, then replays a real AI-vs-AI match using the game's own board.
+  branding/capture/record.mjs records it to MP4.
+-->
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Resolve the game's relative asset paths (avatars) from the project root, as in the real game. -->
+    <base href="/" />
+    <title>Wall Duel capture</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/branding/capture/capture.tsx"></script>
+  </body>
+</html>
