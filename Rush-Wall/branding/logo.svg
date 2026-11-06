@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="Wall Duel logo">
+  <defs>
+    <linearGradient id="page" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#151a3d"/>
+      <stop offset="1" stop-color="#090b1f"/>
+    </linearGradient>
+    <linearGradient id="word" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#c7d2fe"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#page)"/>
+  <image href="../public/icon.svg" x="272" y="120" width="480" height="480"/>
+  <text x="512" y="760" text-anchor="middle" font-family="'Arial Black', 'Segoe UI Black', Arial, sans-serif"
+        font-weight="900" font-size="150" letter-spacing="6" fill="url(#word)">WALL</text>
+  <text x="512" y="900" text-anchor="middle" font-family="'Arial Black', 'Segoe UI Black', Arial, sans-serif"
+        font-weight="900" font-size="150" letter-spacing="6" fill="#fbbf24">DUEL</text>
+</svg>
