@@ -1,156 +1,149 @@
 // ============================================================
-// Rush Wall — Shop Screen
+// Wall Duel — Shop: pawns, walls, boards, avatars, emotes
 // ============================================================
 
 import { useState } from 'react';
 import { useGame } from '../../context/GameContext';
-import { type CosmeticItem } from '../../game/types';
+import type { CosmeticType } from '../../game/types';
 import {
-  getCosmeticsWithStatus,
-  purchaseCosmetic,
-  equipCosmetic,
+  PAWNS, WALLS, BOARDS, AVATARS, EMOTES, RARITY_COLORS, CRAZYGAMES_AVATAR_ID,
+  pawnSpec, pawnPreviewCss, wallPreviewCss,
+  type AnyCosmetic, type AvatarItem, type BoardItem,
 } from '../../store/cosmetics';
+import { ownsCosmetic, purchaseCosmetic, equipCosmetic } from '../../store/profile';
 import { soundManager } from '../../audio/soundManager';
+import { ProfileChips } from '../shared/ProfileChips';
 
-type TabType = 'pawn' | 'wall' | 'board' | 'emote' | 'avatar';
+const TABS: { id: CosmeticType; label: string; items: AnyCosmetic[] }[] = [
+  { id: 'pawn', label: 'Pawns', items: PAWNS },
+  { id: 'wall', label: 'Walls', items: WALLS },
+  { id: 'board', label: 'Boards', items: BOARDS },
+  { id: 'avatar', label: 'Avatars', items: AVATARS },
+  { id: 'emote', label: 'Emotes', items: EMOTES },
+];
+
+const CLASSIC_PREVIEW = { light: ['#efe4c8', '#fffaf0', '#f8efdb'], dark: ['#1a1d4a', '#2a2e6e', '#252964'] };
 
 export function ShopScreen() {
-  const { state, dispatch, refreshProfile } = useGame();
+  const { state, setProfile } = useGame();
   const { profile } = state;
-  const [activeTab, setActiveTab] = useState<TabType>('pawn');
-  const [message, setMessage] = useState('');
+  const [tab, setTab] = useState<CosmeticType>('pawn');
+  const [toast, setToast] = useState<string | null>(null);
+  const myPawn = pawnSpec(profile.equippedPawnSkin);
 
-  const cosmetics = getCosmeticsWithStatus();
-  const filtered = cosmetics.filter(c => c.type === activeTab);
-
-  const isEquipped = (item: CosmeticItem) => {
-    switch (item.type) {
-      case 'pawn': return profile.equippedPawnSkin === item.id;
-      case 'wall': return profile.equippedWallSkin === item.id;
-      case 'board': return profile.equippedBoardTheme === item.id;
-      case 'avatar': return profile.equippedAvatar === item.id;
-      default: return false;
-    }
+  const flash = (msg: string) => {
+    setToast(msg);
+    window.setTimeout(() => setToast(null), 1800);
   };
 
-  const handleItemClick = (item: CosmeticItem) => {
-    soundManager.play('click');
+  const equippedId: Partial<Record<CosmeticType, string>> = {
+    pawn: profile.equippedPawnSkin,
+    wall: profile.equippedWallSkin,
+    board: profile.equippedBoardTheme,
+    avatar: profile.equippedAvatar,
+  };
 
-    if (item.unlocked || profile.unlockedCosmetics.includes(item.id)) {
-      // Equip
-      if (item.type !== 'emote') {
-        equipCosmetic(item.id);
-        refreshProfile();
-        setMessage(`Equipped ${item.name}!`);
-        soundManager.play('click');
-      }
+  const onItem = (item: AnyCosmetic) => {
+    if (ownsCosmetic(profile, item)) {
+      if (item.type === 'emote' || equippedId[item.type] === item.id) return;
+      soundManager.play('click');
+      setProfile(equipCosmetic(item.id));
+      flash(`Equipped ${item.name}`);
+      return;
+    }
+    const result = purchaseCosmetic(item.id);
+    if (result.ok) {
+      soundManager.play('purchase');
+      // Buying equips it straight away (emotes are always available once owned).
+      setProfile(item.type === 'emote' ? result.profile : equipCosmetic(item.id));
+      flash(`Unlocked ${item.name}!`);
     } else {
-      // Purchase
-      const result = purchaseCosmetic(item.id);
-      if (result.success) {
-        soundManager.play('purchase');
-        refreshProfile();
-        setMessage(result.message);
-      } else {
-        soundManager.play('invalidMove');
-        setMessage(result.message);
-      }
+      soundManager.play('invalidMove');
+      flash(result.reason);
     }
-
-    setTimeout(() => setMessage(''), 2000);
   };
 
-  const goBack = () => {
-    soundManager.play('click');
-    dispatch({ type: 'SET_SCREEN', screen: 'home' });
-  };
+  // Logged-in CrazyGames players can also use their CrazyGames picture (free).
+  const crazyAvatar: AvatarItem | null = profile.crazyGames?.avatarUrl
+    ? { id: CRAZYGAMES_AVATAR_ID, name: 'My CrazyGames picture', type: 'avatar', price: 0, rarity: 'common', image: profile.crazyGames.avatarUrl, free: true }
+    : null;
+  const tabItems = TABS.find(t => t.id === tab)!.items;
+  const items = tab === 'avatar' && crazyAvatar ? [crazyAvatar, ...tabItems] : tabItems;
 
   return (
-    <div className="screen shop-screen">
-      <div className="shop-header">
-        <button className="btn btn-ghost" onClick={goBack}>← Back</button>
-        <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.3rem' }}>🛍️ Shop</h2>
-        <div className="shop-balance">
-          🪙 {profile.coins}
-        </div>
-      </div>
+    <div className="screen menu-screen">
+      <header className="menu-header">
+        <h1 className="screen-title">Shop</h1>
+        <ProfileChips />
+      </header>
 
-      {message && (
-        <div style={{
-          padding: '8px 16px',
-          borderRadius: 'var(--radius-md)',
-          background: 'rgba(0, 212, 255, 0.1)',
-          border: '1px solid rgba(0, 212, 255, 0.3)',
-          marginBottom: '12px',
-          fontSize: '0.85rem',
-          textAlign: 'center',
-          animation: 'fadeIn 0.3s ease-out',
-          maxWidth: '500px',
-          width: '100%',
-        }}>
-          {message}
-        </div>
-      )}
-
-      <div className="shop-tabs">
-        {(['pawn', 'emote', 'avatar'] as TabType[]).map(tab => (
-          <button
-            key={tab}
-            className={`shop-tab ${activeTab === tab ? 'active' : ''}`}
-            onClick={() => { setActiveTab(tab); soundManager.play('click'); }}
-          >
-            {tab === 'pawn' && '🔮 Pawns'}
-            {tab === 'emote' && '😊 Emotes'}
-            {tab === 'avatar' && '👤 Avatars'}
+      <div className="tabs" role="tablist">
+        {TABS.map(t => (
+          <button key={t.id} role="tab" aria-selected={tab === t.id} className={tab === t.id ? 'tab on' : 'tab'} onClick={() => setTab(t.id)}>
+            {t.label}
           </button>
         ))}
       </div>
 
-      <div className="shop-grid">
-        {filtered.map(item => {
-          const owned = item.unlocked || profile.unlockedCosmetics.includes(item.id);
-          const equipped = isEquipped(item);
+      {toast && <div className="toast">{toast}</div>}
 
+      <div className="shop-grid">
+        {items.map(item => {
+          const owned = ownsCosmetic(profile, item);
+          const equipped = equippedId[item.type] === item.id;
+          const affordable = profile.coins >= item.price;
           return (
-            <div
+            <button
               key={item.id}
               className={`shop-item ${owned ? 'owned' : ''} ${equipped ? 'equipped' : ''}`}
-              onClick={() => handleItemClick(item)}
+              style={{ '--rarity': RARITY_COLORS[item.rarity] } as React.CSSProperties}
+              onClick={() => onItem(item)}
             >
-              <div
-                className={`shop-item-preview ${item.type === 'pawn' ? 'pawn-sphere' : ''}`}
-                style={{
-                  background: item.type === 'avatar' ? 'transparent' : (item.type === 'emote' ? 'rgba(0,0,0,0.2)' : item.preview),
-                  fontSize: item.type === 'emote' ? '2rem' : '1.5rem',
-                  overflow: item.type === 'pawn' ? 'visible' : 'hidden',
-                  borderRadius: item.type === 'avatar' ? '50%' : undefined,
-                  position: 'relative'
-                }}
-              >
-                {item.type === 'emote' && item.preview}
-                {item.type === 'avatar' && (
-                  <img src={item.preview} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                )}
-                {item.type === 'pawn' && item.icon && (
-                  <span style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 2 }}>
-                    {item.icon}
-                  </span>
-                )}
-              </div>
-              <div className="shop-item-name">{item.name}</div>
-              {equipped ? (
-                <div className="shop-item-status">✓ Equipped</div>
-              ) : owned ? (
-                <div className="shop-item-status" style={{ color: 'var(--color-text-secondary)' }}>
-                  {item.type === 'emote' ? 'Unlocked' : 'Tap to equip'}
-                </div>
-              ) : (
-                <div className="shop-item-price">🪙 {item.price}</div>
-              )}
-            </div>
+              <span className="rarity">{item.rarity}</span>
+              <span className="shop-preview">{preview(item, myPawn.color, profile.settings.theme)}</span>
+              <span className="shop-name">{item.name}</span>
+              <span className={`shop-status ${!owned && !affordable ? 'too-expensive' : ''}`}>
+                {equipped ? '✓ Equipped' : owned ? (item.type === 'emote' ? 'Owned' : 'Equip') : `🪙 ${item.price}`}
+              </span>
+            </button>
           );
         })}
       </div>
     </div>
+  );
+}
+
+function preview(item: AnyCosmetic, myPawnColor: string, theme: 'light' | 'dark') {
+  switch (item.type) {
+    case 'pawn':
+      return (
+        <span className="preview-pawn" style={{ background: pawnPreviewCss(item.spec) }}>
+          {item.spec.icon && <span>{item.spec.icon}</span>}
+        </span>
+      );
+    case 'wall':
+      return (
+        <span className="preview-wall-wrap">
+          <span className="preview-wall" style={{ background: wallPreviewCss(item.spec, myPawnColor), boxShadow: item.spec.glow ? `0 0 10px ${item.spec.glow}` : undefined }} />
+        </span>
+      );
+    case 'board':
+      return <BoardPreview item={item} theme={theme} />;
+    case 'avatar':
+      return <img className="preview-avatar" src={item.image} alt="" loading="lazy" />;
+    case 'emote':
+      return <span className="preview-emote">{item.emoji}</span>;
+  }
+}
+
+function BoardPreview({ item, theme }: { item: BoardItem; theme: 'light' | 'dark' }) {
+  const s = item.spec;
+  const [surface, a, b] = s.followsAppTheme ? CLASSIC_PREVIEW[theme] : [s.surface, s.cellA, s.cellB];
+  return (
+    <span className="preview-board" style={{ background: s.followsAppTheme ? surface : s.frame }}>
+      {Array.from({ length: 16 }, (_, i) => (
+        <span key={i} style={{ background: (Math.floor(i / 4) + i) % 2 === 0 ? a : b }} />
+      ))}
+    </span>
   );
 }
