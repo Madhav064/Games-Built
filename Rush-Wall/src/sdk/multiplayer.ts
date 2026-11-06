@@ -1,194 +1,302 @@
-import { RealtimeChannel } from '@supabase/supabase-js';
-import { supabase, getCurrentUserId, ensureAuthenticated } from './supabase';
-import type { Move } from '../game/types';
+// ============================================================
+// Wall Duel — Online multiplayer over Supabase Realtime broadcast
+// No game server: both clients run the same rules engine and
+// exchange moves. Quick match, friend rooms and in-game sync.
+// ============================================================
 
-export type MatchStatus = 'idle' | 'searching' | 'matched' | 'error';
+import type { RealtimeChannel } from '@supabase/supabase-js';
+import { getSupabase, getUserId } from './supabase';
+import type { Move, PlayerLook } from '../game/types';
+import { CHANNELS } from '../config/brand';
+import { HEARTBEAT_INTERVAL_MS, HEARTBEAT_TIMEOUT_MS } from '../config/balance';
+
+export interface OnlinePlayer extends PlayerLook {
+  userId: string;
+  name: string;
+}
 
 export interface MatchInfo {
   gameId: string;
-  opponentId: string;
+  /** Host plays as player 0 (moves first). */
   isHost: boolean;
-  opponentName: string;
-  opponentPawnSkin: string;
-  opponentWallSkin: string;
-  opponentAvatar: string;
+  opponent: OnlinePlayer;
 }
 
-let matchmakingChannel: RealtimeChannel | null = null;
-let gameChannel: RealtimeChannel | null = null;
-let pingInterval: ReturnType<typeof setInterval> | null = null;
-let matchBroadcastInterval: ReturnType<typeof setInterval> | null = null;
+export type SearchStatus = 'connecting' | 'searching' | 'waiting_for_friend' | 'matched' | 'error';
 
+type MeInput = Omit<OnlinePlayer, 'userId'>;
+
+interface Handshake {
+  stop(): void;
+}
+
+const newGameId = () => `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
+
+// ------------------------------------------------------------
+// Quick match
+// ------------------------------------------------------------
 /**
- * Robust matchmaking using ONLY broadcasts with retries.
- * No Supabase Presence — it has timing issues.
- *
- * Flow:
- * 1. Both players join "matchmaking_lobby" channel.
- * 2. Both send "ping" every 1s with their userId + profile.
- * 3. On receiving a ping, store the opponent info.
- *    - The player with the LOWER userId is the host.
- *    - The host generates a gameId, calls onMatched immediately,
- *      and keeps broadcasting "match_made" every 500ms so the guest gets it.
- * 4. The guest receives "match_made", calls onMatched.
- * 5. Retries ensure no messages are lost.
+ * Join the public lobby. Players announce themselves every second;
+ * the one with the lower id hosts and confirms the match repeatedly
+ * until the guest has surely received it.
  */
-export async function joinQueue(
-  profile: any,
+export async function startQuickMatch(
+  me: MeInput,
   onMatched: (match: MatchInfo) => void,
-  onStatusChange: (status: MatchStatus) => void
-) {
-  await ensureAuthenticated();
-  const userId = await getCurrentUserId();
-  if (!userId) {
-    onStatusChange('error');
-    return;
-  }
+  onStatus: (status: SearchStatus) => void,
+): Promise<Handshake> {
+  onStatus('connecting');
+  let channel: RealtimeChannel | null = null;
+  let pingTimer: ReturnType<typeof setInterval> | null = null;
+  let confirmTimer: ReturnType<typeof setInterval> | null = null;
+  let matched = false;
 
-  onStatusChange('searching');
-  cleanupMatchmaking();
-
-  const myProfile = {
-    userId,
-    username: profile.username,
-    equippedPawnSkin: profile.equippedPawnSkin,
-    equippedWallSkin: profile.equippedWallSkin,
-    equippedAvatar: profile.equippedAvatar,
+  const stop = () => {
+    if (pingTimer) clearInterval(pingTimer);
+    if (confirmTimer) clearInterval(confirmTimer);
+    pingTimer = confirmTimer = null;
+    const c = channel;
+    channel = null;
+    if (c) setTimeout(() => void c.unsubscribe(), 600);
   };
 
-  let isMatched = false;
-  let matchGameId: string | null = null;
+  try {
+    const [supabase, userId] = await Promise.all([getSupabase(), getUserId()]);
+    const self: OnlinePlayer = { ...me, userId };
+    channel = supabase.channel(CHANNELS.lobby);
 
-  matchmakingChannel = supabase.channel('matchmaking_lobby');
-
-  matchmakingChannel
-    .on('broadcast', { event: 'ping' }, ({ payload: sender }) => {
-      if (isMatched || sender.userId === userId) return;
-
-      // Am I the host? (lower userId)
-      if (userId < sender.userId && !matchGameId) {
-        matchGameId = `game_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-        isMatched = true;
-        stopIntervals();
-
-        // Keep sending match_made so the guest definitely gets it
-        let sendCount = 0;
-        matchBroadcastInterval = setInterval(() => {
-          if (!matchmakingChannel || sendCount > 15) {
-            if (matchBroadcastInterval) { clearInterval(matchBroadcastInterval); matchBroadcastInterval = null; }
-            if (matchmakingChannel) { matchmakingChannel.unsubscribe(); matchmakingChannel = null; }
-            return;
-          }
-          matchmakingChannel.send({
-            type: 'broadcast',
-            event: 'match_made',
-            payload: { gameId: matchGameId, hostId: userId, guestId: sender.userId, hostProfile: myProfile },
-          });
-          sendCount++;
-        }, 300);
-
-        // Also send first one immediately
-        matchmakingChannel?.send({
-          type: 'broadcast',
-          event: 'match_made',
-          payload: { gameId: matchGameId, hostId: userId, guestId: sender.userId, hostProfile: myProfile },
-        });
-
-        onMatched({
-          gameId: matchGameId,
-          opponentId: sender.userId,
-          isHost: true,
-          opponentName: sender.username || 'Opponent',
-          opponentPawnSkin: sender.equippedPawnSkin || 'pawn_red',
-          opponentWallSkin: sender.equippedWallSkin || 'wall_default',
-          opponentAvatar: sender.equippedAvatar || 'avatar_1',
-        });
-        onStatusChange('matched');
-      }
-    })
-    .on('broadcast', { event: 'match_made' }, ({ payload: data }) => {
-      if (isMatched) return;
-      if (data.guestId !== userId) return;
-
-      isMatched = true;
-      stopIntervals();
-
-      setTimeout(() => {
-        if (matchmakingChannel) { matchmakingChannel.unsubscribe(); matchmakingChannel = null; }
-      }, 1000);
-
-      onMatched({
-        gameId: data.gameId,
-        opponentId: data.hostId,
-        isHost: false,
-        opponentName: data.hostProfile?.username || 'Opponent',
-        opponentPawnSkin: data.hostProfile?.equippedPawnSkin || 'pawn_red',
-        opponentWallSkin: data.hostProfile?.equippedWallSkin || 'wall_default',
-        opponentAvatar: data.hostProfile?.equippedAvatar || 'avatar_1',
+    channel
+      .on('broadcast', { event: 'ping' }, ({ payload }) => {
+        const other = payload as OnlinePlayer;
+        // The lower id hosts; ignore our own pings and players who will host us.
+        if (matched || userId >= other.userId) return;
+        // We host.
+        matched = true;
+        if (pingTimer) clearInterval(pingTimer);
+        const gameId = newGameId();
+        const confirm = { gameId, hostId: userId, guestId: other.userId, host: self };
+        let sent = 0;
+        const send = () => void channel?.send({ type: 'broadcast', event: 'match', payload: confirm });
+        send();
+        confirmTimer = setInterval(() => (++sent > 12 ? stop() : send()), 300);
+        onStatus('matched');
+        onMatched({ gameId, isHost: true, opponent: other });
+      })
+      .on('broadcast', { event: 'match' }, ({ payload }) => {
+        const { gameId, guestId, host } = payload as { gameId: string; guestId: string; host: OnlinePlayer };
+        if (matched || guestId !== userId) return;
+        matched = true;
+        stop();
+        onStatus('matched');
+        onMatched({ gameId, isHost: false, opponent: host });
+      })
+      .subscribe(status => {
+        if (status === 'SUBSCRIBED') {
+          onStatus('searching');
+          const ping = () => { if (!matched) void channel?.send({ type: 'broadcast', event: 'ping', payload: self }); };
+          ping();
+          pingTimer = setInterval(ping, 1000);
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          onStatus('error');
+        }
       });
-      onStatusChange('matched');
-    })
-    .subscribe((status) => {
-      if (status === 'SUBSCRIBED') {
-        // Send first ping immediately
-        matchmakingChannel!.send({ type: 'broadcast', event: 'ping', payload: myProfile });
+  } catch (e) {
+    console.warn('[Multiplayer] quick match failed', e);
+    onStatus('error');
+  }
+  return { stop };
+}
 
-        // Keep pinging every 1s so the other player discovers us
-        pingInterval = setInterval(() => {
-          if (isMatched || !matchmakingChannel) return;
-          matchmakingChannel.send({ type: 'broadcast', event: 'ping', payload: myProfile });
-        }, 1000);
+// ------------------------------------------------------------
+// Friend rooms (invite link / room code)
+// ------------------------------------------------------------
+const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+export function newRoomCode(): string {
+  return Array.from({ length: 5 }, () => ROOM_ALPHABET[Math.floor(Math.random() * ROOM_ALPHABET.length)]).join('');
+}
+export const normalizeRoomCode = (code: string) => code.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
+
+/** Host a private room and wait for a friend to join with the code. */
+export async function hostRoom(
+  code: string,
+  me: MeInput,
+  onMatched: (match: MatchInfo) => void,
+  onStatus: (status: SearchStatus) => void,
+): Promise<Handshake> {
+  return roomHandshake(code, me, true, onMatched, onStatus);
+}
+
+/** Join a friend's room. */
+export async function joinRoom(
+  code: string,
+  me: MeInput,
+  onMatched: (match: MatchInfo) => void,
+  onStatus: (status: SearchStatus) => void,
+): Promise<Handshake> {
+  return roomHandshake(code, me, false, onMatched, onStatus);
+}
+
+async function roomHandshake(
+  code: string,
+  me: MeInput,
+  isHost: boolean,
+  onMatched: (match: MatchInfo) => void,
+  onStatus: (status: SearchStatus) => void,
+): Promise<Handshake> {
+  onStatus('connecting');
+  let channel: RealtimeChannel | null = null;
+  let timer: ReturnType<typeof setInterval> | null = null;
+  let matched = false;
+
+  const stop = () => {
+    if (timer) clearInterval(timer);
+    timer = null;
+    const c = channel;
+    channel = null;
+    if (c) setTimeout(() => void c.unsubscribe(), 600);
+  };
+
+  try {
+    const [supabase, userId] = await Promise.all([getSupabase(), getUserId()]);
+    const self: OnlinePlayer = { ...me, userId };
+    channel = supabase.channel(CHANNELS.room(code));
+
+    if (isHost) {
+      channel.on('broadcast', { event: 'join' }, ({ payload }) => {
+        const guest = payload as OnlinePlayer;
+        if (matched || guest.userId === userId) return;
+        matched = true;
+        const start = { gameId: newGameId(), guestId: guest.userId, host: self };
+        let sent = 0;
+        const send = () => void channel?.send({ type: 'broadcast', event: 'start', payload: start });
+        send();
+        timer = setInterval(() => (++sent > 12 ? stop() : send()), 300);
+        onStatus('matched');
+        onMatched({ gameId: start.gameId, isHost: true, opponent: guest });
+      });
+    } else {
+      channel.on('broadcast', { event: 'start' }, ({ payload }) => {
+        const { gameId, guestId, host } = payload as { gameId: string; guestId: string; host: OnlinePlayer };
+        if (matched || guestId !== userId) return;
+        matched = true;
+        stop();
+        onStatus('matched');
+        onMatched({ gameId, isHost: false, opponent: host });
+      });
+    }
+
+    channel.subscribe(status => {
+      if (status === 'SUBSCRIBED') {
+        onStatus(isHost ? 'waiting_for_friend' : 'searching');
+        if (!isHost) {
+          const join = () => { if (!matched) void channel?.send({ type: 'broadcast', event: 'join', payload: self }); };
+          join();
+          timer = setInterval(join, 1000);
+        }
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        onStatus('error');
       }
     });
-}
-
-function stopIntervals() {
-  if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
-}
-
-function cleanupMatchmaking() {
-  stopIntervals();
-  if (matchBroadcastInterval) { clearInterval(matchBroadcastInterval); matchBroadcastInterval = null; }
-  if (matchmakingChannel) { matchmakingChannel.unsubscribe(); matchmakingChannel = null; }
-}
-
-export function cancelQueue() {
-  cleanupMatchmaking();
-}
-
-// ============================================================
-// In-Game Communication
-// ============================================================
-
-export function joinGameChannel(
-  gameId: string,
-  onMoveReceived: (move: Move) => void,
-  onOpponentDisconnected: () => void
-) {
-  if (gameChannel) { gameChannel.unsubscribe(); }
-
-  gameChannel = supabase.channel(gameId);
-  gameChannel
-    .on('broadcast', { event: 'game_move' }, ({ payload }) => {
-      onMoveReceived(payload.move as Move);
-    })
-    .on('broadcast', { event: 'player_left' }, () => {
-      onOpponentDisconnected();
-    })
-    .subscribe();
-}
-
-export function sendMove(move: Move) {
-  if (gameChannel) {
-    gameChannel.send({ type: 'broadcast', event: 'game_move', payload: { move } });
+  } catch (e) {
+    console.warn('[Multiplayer] room failed', e);
+    onStatus('error');
   }
+  return { stop };
 }
 
-export function leaveGameChannel() {
-  if (gameChannel) {
-    gameChannel.send({ type: 'broadcast', event: 'player_left', payload: {} });
-    setTimeout(() => {
-      if (gameChannel) { gameChannel.unsubscribe(); gameChannel = null; }
-    }, 200);
+// ------------------------------------------------------------
+// In-game channel
+// ------------------------------------------------------------
+export interface GameChannelHandlers {
+  onMove(move: Move): void;
+  onEmote(emoji: string): void;
+  onResign(): void;
+  /** Opponent says they ran out of time. */
+  onTimeout(): void;
+  /** Opponent left on purpose or stopped responding. */
+  onGone(): void;
+}
+
+export class GameChannel {
+  private channel: RealtimeChannel | null = null;
+  private heartbeat: ReturnType<typeof setInterval> | null = null;
+  private lastSeen = Date.now();
+  private sentSeq = 0;
+  private receivedSeq = 0;
+  private gone = false;
+  private readonly onPageHide = () => this.leave();
+  private readonly gameId: string;
+  private readonly handlers: GameChannelHandlers;
+
+  constructor(gameId: string, handlers: GameChannelHandlers) {
+    this.gameId = gameId;
+    this.handlers = handlers;
+  }
+
+  async connect(): Promise<void> {
+    const supabase = await getSupabase();
+    const channel = supabase.channel(CHANNELS.game(this.gameId));
+    this.channel = channel;
+
+    const seen = () => { this.lastSeen = Date.now(); };
+    channel
+      .on('broadcast', { event: 'move' }, ({ payload }) => {
+        seen();
+        const { seq, move } = payload as { seq: number; move: Move };
+        if (seq <= this.receivedSeq) return; // duplicate
+        this.receivedSeq = seq;
+        this.handlers.onMove(move);
+      })
+      .on('broadcast', { event: 'emote' }, ({ payload }) => { seen(); this.handlers.onEmote((payload as { emoji: string }).emoji); })
+      .on('broadcast', { event: 'resign' }, () => { seen(); this.handlers.onResign(); })
+      .on('broadcast', { event: 'timeout' }, () => { seen(); this.handlers.onTimeout(); })
+      .on('broadcast', { event: 'hb' }, seen)
+      .on('broadcast', { event: 'leave' }, () => this.markGone())
+      .subscribe(status => {
+        if (status === 'SUBSCRIBED') this.startHeartbeat();
+      });
+
+    window.addEventListener('pagehide', this.onPageHide);
+  }
+
+  sendMove(move: Move): void {
+    this.send('move', { seq: ++this.sentSeq, move });
+  }
+  sendEmote(emoji: string): void { this.send('emote', { emoji }); }
+  sendResign(): void { this.send('resign', {}); }
+  sendTimeout(): void { this.send('timeout', {}); }
+
+  /** Tell the opponent we're leaving, then disconnect. */
+  leave(): void {
+    if (!this.channel) return;
+    this.send('leave', {});
+    this.close();
+  }
+
+  close(): void {
+    if (this.heartbeat) clearInterval(this.heartbeat);
+    this.heartbeat = null;
+    window.removeEventListener('pagehide', this.onPageHide);
+    const c = this.channel;
+    this.channel = null;
+    if (c) setTimeout(() => void c.unsubscribe(), 300);
+  }
+
+  private startHeartbeat(): void {
+    this.lastSeen = Date.now();
+    this.heartbeat = setInterval(() => {
+      this.send('hb', {});
+      if (Date.now() - this.lastSeen > HEARTBEAT_TIMEOUT_MS) this.markGone();
+    }, HEARTBEAT_INTERVAL_MS);
+  }
+
+  private markGone(): void {
+    if (this.gone) return;
+    this.gone = true;
+    this.handlers.onGone();
+  }
+
+  private send(event: string, payload: object): void {
+    void this.channel?.send({ type: 'broadcast', event, payload });
   }
 }
