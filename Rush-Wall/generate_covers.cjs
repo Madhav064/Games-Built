@@ -1,7 +1,7 @@
 const Jimp = require('jimp');
 
 async function generateCovers() {
-  const logoPath = './public/logo.png';
+  const logoPath = './branding/logo.png';
   console.log('Loading logo...');
   const logo = await Jimp.read(logoPath);
   
