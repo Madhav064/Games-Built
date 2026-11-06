@@ -1,159 +1,103 @@
 // ============================================================
-// Rush Wall — Profile Screen
+// Wall Duel — Profile: name, level & rank, stats, settings
 // ============================================================
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useGame } from '../../context/GameContext';
-import { soundManager } from '../../audio/soundManager';
-import { updateProfile, COSMETICS } from '../../store/cosmetics';
-import { getPlayerRank } from '../../sdk/leaderboard';
+import { avatarImage } from '../../store/cosmetics';
+import { setUsername, resolveAvatar } from '../../store/profile';
+import { isAccountSystemAvailable } from '../../sdk/crazygames';
+import { rankForLevel, levelProgress, RANKS } from '../../progression/xp';
+import { totalStars, ALL_RIVALS } from '../../progression/ladder';
+import { xpToNextLevel } from '../../config/balance';
 
 export function ProfileScreen() {
-  const { state, dispatch } = useGame();
+  const { state, setProfile, updateSettings, startTutorial, navigate, loginWithCrazyGames } = useGame();
   const { profile } = state;
-  const [isEditing, setIsEditing] = useState(false);
-  const [editName, setEditName] = useState(profile.username);
-  const [onlineWins, setOnlineWins] = useState(0);
-  const [onlineLosses, setOnlineLosses] = useState(0);
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(profile.username);
+  const rank = rankForLevel(profile.level);
+  const nextRank = RANKS.find(r => r.minLevel > profile.level);
+  const winRate = profile.gamesPlayed ? Math.round((profile.gamesWon / profile.gamesPlayed) * 100) : 0;
 
-  useEffect(() => {
-    getPlayerRank().then(({ onlineWins: w, onlineLosses: l }) => {
-      setOnlineWins(w);
-      setOnlineLosses(l);
-    }).catch(() => {});
-  }, []);
-
-  const avatarItem = COSMETICS.find(c => c.id === profile.equippedAvatar);
-  const avatarImg = avatarItem?.preview || '/avatars/avatar_1.jpg';
-
-  const totalOnline = onlineWins + onlineLosses;
-  const winRate = totalOnline > 0
-    ? Math.round((onlineWins / totalOnline) * 100)
-    : 0;
-
-  const goBack = () => {
-    soundManager.play('click');
-    dispatch({ type: 'SET_SCREEN', screen: 'home' });
+  const saveName = () => {
+    setProfile(setUsername(name));
+    setEditing(false);
   };
 
-  const handleSaveName = () => {
-    if (editName.trim() && editName !== profile.username) {
-      const updated = updateProfile({ username: editName.trim() });
-      dispatch({ type: 'SET_PROFILE', profile: updated });
-    } else {
-      setEditName(profile.username);
-    }
-    setIsEditing(false);
-    soundManager.play('click');
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleSaveName();
-    }
-  };
+  const stats: [string, string | number][] = [
+    ['Matches', profile.gamesPlayed],
+    ['Wins', profile.gamesWon],
+    ['Win rate', `${winRate}%`],
+    ['Best streak', profile.bestWinStreak],
+    ['Ladder stars', `${totalStars(profile.ladderStars)} / ${ALL_RIVALS.length * 3}`],
+    ['Walls placed', profile.totalWallsPlaced],
+  ];
 
   return (
-    <div className="screen profile-screen">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', maxWidth: '420px', marginBottom: '20px' }}>
-        <button className="btn btn-ghost" onClick={goBack}>← Back</button>
-        <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.3rem' }}>Profile</h2>
-        <div style={{ width: '60px' }} />
-      </div>
+    <div className="screen menu-screen">
+      <header className="menu-header">
+        <h1 className="screen-title">Profile</h1>
+      </header>
 
-      <div className="profile-card glass-card">
-        <div className="profile-avatar" style={{ padding: 0, overflow: 'hidden' }}>
-          <img src={avatarImg} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        </div>
-        
-        {isEditing ? (
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'center', marginBottom: '8px' }}>
-            <input 
-              type="text" 
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              onKeyDown={handleKeyDown}
-              onBlur={handleSaveName}
-              autoFocus
-              className="text-center"
-              style={{
-                fontFamily: 'var(--font-heading)',
-                fontSize: '1.5rem',
-                fontWeight: 'bold',
-                padding: '4px 8px',
-                borderRadius: '8px',
-                border: '2px solid var(--color-blue)',
-                background: 'transparent',
-                color: 'var(--color-text-primary)',
-                width: '200px',
-                outline: 'none'
-              }}
-              maxLength={15}
-            />
-          </div>
-        ) : (
-          <div 
-            className="profile-name font-heading" 
-            onClick={() => setIsEditing(true)}
-            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-            title="Click to edit name"
-          >
-            {profile.username}
-            <span style={{ fontSize: '1rem', opacity: 0.5 }}>✏️</span>
-          </div>
-        )}
-
-        <div className="profile-stats-grid">
-          <div className="profile-stat">
-            <div className="profile-stat-value">{totalOnline}</div>
-            <div className="profile-stat-label">Online Games</div>
-          </div>
-          <div className="profile-stat">
-            <div className="profile-stat-value" style={{ color: 'var(--color-emerald)' }}>
-              {onlineWins}
+      <div className="profile-grid">
+        <section className="card profile-card">
+          <button className="profile-avatar" onClick={() => navigate('shop')} title="Change avatar in the shop">
+            <img src={avatarImage(resolveAvatar(profile))} alt="Your avatar" />
+          </button>
+          {profile.crazyGames ? (
+            <div className="profile-name locked" title="Your CrazyGames username">{profile.username}</div>
+          ) : editing ? (
+            <div className="name-edit">
+              <input
+                value={name}
+                maxLength={16}
+                autoFocus
+                onChange={e => setName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && saveName()}
+                aria-label="Your name"
+              />
+              <button className="btn btn-primary btn-sm" onClick={saveName}>Save</button>
             </div>
-            <div className="profile-stat-label">Wins</div>
+          ) : (
+            <button className="profile-name" onClick={() => { setName(profile.username); setEditing(true); }}>
+              {profile.username} <span className="edit-icon">✎</span>
+            </button>
+          )}
+          {profile.crazyGames && <div className="muted small">Signed in with CrazyGames · progress saved to your account</div>}
+          {!profile.crazyGames && isAccountSystemAvailable() && (
+            <button className="btn btn-secondary btn-sm" onClick={loginWithCrazyGames}>Log in with CrazyGames to save progress</button>
+          )}
+          <div className="rank-badge" style={{ borderColor: rank.color, color: rank.color }}>{rank.icon} {rank.name}</div>
+          <div className="xp-block">
+            <div className="xp-row"><span>Level {profile.level}</span><span>{profile.xp} / {xpToNextLevel(profile.level)} XP</span></div>
+            <div className="xp-bar"><div className="xp-fill" style={{ width: `${Math.round(levelProgress(profile.level, profile.xp) * 100)}%` }} /></div>
+            {nextRank && <div className="muted small">{nextRank.icon} {nextRank.name} at level {nextRank.minLevel}</div>}
           </div>
-          <div className="profile-stat">
-            <div className="profile-stat-value" style={{ color: 'var(--color-danger)' }}>
-              {onlineLosses}
-            </div>
-            <div className="profile-stat-label">Losses</div>
-          </div>
-        </div>
+        </section>
 
-        <div className="profile-extra-stats">
-          <div className="profile-extra-stat">
-            <span>Win Rate</span>
-            <span>{winRate}%</span>
+        <section className="card">
+          <h2 className="card-title">Stats</h2>
+          <div className="stat-grid">
+            {stats.map(([label, value]) => (
+              <div key={label} className="stat"><div className="stat-value">{value}</div><div className="stat-label">{label}</div></div>
+            ))}
           </div>
-          <div className="profile-extra-stat">
-            <span>Win Streak</span>
-            <span>{profile.winStreak}</span>
-          </div>
-          <div className="profile-extra-stat">
-            <span>Best Streak</span>
-            <span>{profile.bestWinStreak}</span>
-          </div>
-          <div className="profile-extra-stat">
-            <span>Coins</span>
-            <span style={{ color: 'var(--color-amber)' }}>🪙 {profile.coins}</span>
-          </div>
-          <div className="profile-extra-stat">
-            <span>Walls Placed</span>
-            <span>{profile.totalWallsPlaced}</span>
-          </div>
-          <div className="profile-extra-stat">
-            <span>Total Moves</span>
-            <span>{profile.totalMovesPlayed}</span>
-          </div>
-        </div>
-      </div>
+        </section>
 
-      <div style={{ width: '100%', maxWidth: '420px' }}>
-        <p className="text-center text-muted text-xs" style={{ marginTop: '8px' }}>
-          Member since {new Date(profile.createdAt).toLocaleDateString()}
-        </p>
+        <section className="card">
+          <h2 className="card-title">Settings</h2>
+          <label className="setting">
+            <span>Sound</span>
+            <input type="checkbox" checked={profile.settings.soundOn} onChange={e => updateSettings({ soundOn: e.target.checked })} />
+          </label>
+          <label className="setting">
+            <span>Dark theme</span>
+            <input type="checkbox" checked={profile.settings.theme === 'dark'} onChange={e => updateSettings({ theme: e.target.checked ? 'dark' : 'light' })} />
+          </label>
+          <button className="btn btn-secondary btn-full" onClick={startTutorial}>Replay tutorial</button>
+          <button className="link-btn small privacy-link" onClick={() => navigate('privacy')}>Privacy policy</button>
+        </section>
       </div>
     </div>
   );
