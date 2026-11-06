@@ -1,205 +1,111 @@
 // ============================================================
-// Rush Wall — Web Audio Procedural Sound Manager
+// Wall Duel — Procedural sound (Web Audio API, no audio files)
+// Silent when: the player turns sound off, CrazyGames asks to
+// mute, or an ad is playing.
 // ============================================================
 
 type SoundName =
-  | 'pawnMove'
-  | 'wallPlace'
-  | 'turnStart'
-  | 'win'
-  | 'lose'
-  | 'timerTick'
-  | 'timerUrgent'
-  | 'click'
-  | 'hover'
-  | 'invalidMove'
-  | 'emote'
-  | 'coinEarn'
-  | 'purchase';
+  | 'pawnMove' | 'wallPlace' | 'turnStart' | 'win' | 'lose' | 'timerUrgent'
+  | 'click' | 'invalidMove' | 'emote' | 'coinEarn' | 'purchase' | 'levelUp' | 'star';
+
+type MuteReason = 'player' | 'platform' | 'ad';
 
 class SoundManager {
   private ctx: AudioContext | null = null;
-  private masterGain: GainNode | null = null;
-  private _muted: boolean = false;
-  private _volume: number = 0.5;
-  private initialized: boolean = false;
+  private master: GainNode | null = null;
+  private muteReasons = new Set<MuteReason>();
+  private volume = 0.5;
 
-  /**
-   * Initialize the audio context (must be called on user interaction).
-   */
-  init(): void {
-    if (this.initialized) return;
-    try {
-      this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      this.masterGain = this.ctx.createGain();
-      this.masterGain.gain.value = this._volume;
-      this.masterGain.connect(this.ctx.destination);
-      this.initialized = true;
-    } catch (e) {
-      console.warn('Web Audio API not supported:', e);
+  /** Create the audio context. Browsers require a user gesture first. */
+  unlock(): void {
+    if (!this.ctx) {
+      try {
+        const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        this.ctx = new Ctor();
+        this.master = this.ctx.createGain();
+        this.master.connect(this.ctx.destination);
+        this.applyGain();
+      } catch (e) {
+        console.warn('Web Audio API not supported', e);
+        return;
+      }
     }
+    if (this.ctx.state === 'suspended' && !this.muteReasons.has('ad')) void this.ctx.resume();
   }
 
-  get muted(): boolean { return this._muted; }
-  get volume(): number { return this._volume; }
-
-  setVolume(v: number): void {
-    this._volume = Math.max(0, Math.min(1, v));
-    if (this.masterGain) {
-      this.masterGain.gain.value = this._muted ? 0 : this._volume;
-    }
+  setMuted(reason: MuteReason, muted: boolean): void {
+    if (muted) this.muteReasons.add(reason);
+    else this.muteReasons.delete(reason);
+    this.applyGain();
+    // Fully suspend during ads so nothing leaks through.
+    if (reason === 'ad' && this.ctx) void (muted ? this.ctx.suspend() : this.ctx.resume());
   }
 
-  toggleMute(): void {
-    this._muted = !this._muted;
-    if (this.masterGain) {
-      this.masterGain.gain.value = this._muted ? 0 : this._volume;
-    }
+  get isSilent(): boolean {
+    return this.muteReasons.size > 0;
   }
 
-  /**
-   * Play a sound by name.
-   */
+  private applyGain(): void {
+    if (this.master) this.master.gain.value = this.isSilent ? 0 : this.volume;
+  }
+
   play(name: SoundName): void {
-    if (!this.ctx || !this.masterGain || this._muted) return;
-    if (this.ctx.state === 'suspended') {
-      this.ctx.resume();
-    }
-
+    if (!this.ctx || !this.master || this.isSilent) return;
     const t = this.ctx.currentTime;
+    const tone = (f: number, d: number, type: OscillatorType, v: number, at = 0) => this.tone(f, d, type, v, t + at);
 
     switch (name) {
-      case 'pawnMove':
-        this.playTone(440, 0.08, 'sine', 0.3, t);
-        this.playTone(660, 0.08, 'sine', 0.2, t + 0.05);
-        break;
-
-      case 'wallPlace':
-        this.playNoise(0.1, 0.4, t);
-        this.playTone(200, 0.15, 'square', 0.15, t);
-        break;
-
-      case 'turnStart':
-        this.playTone(523, 0.06, 'sine', 0.2, t);
-        this.playTone(659, 0.06, 'sine', 0.2, t + 0.06);
-        break;
-
-      case 'win':
-        this.playTone(523, 0.15, 'sine', 0.3, t);
-        this.playTone(659, 0.15, 'sine', 0.3, t + 0.12);
-        this.playTone(784, 0.15, 'sine', 0.3, t + 0.24);
-        this.playTone(1047, 0.3, 'sine', 0.4, t + 0.36);
-        break;
-
-      case 'lose':
-        this.playTone(440, 0.2, 'sawtooth', 0.2, t);
-        this.playTone(370, 0.2, 'sawtooth', 0.2, t + 0.15);
-        this.playTone(311, 0.3, 'sawtooth', 0.25, t + 0.30);
-        break;
-
-      case 'timerTick':
-        this.playTone(800, 0.03, 'sine', 0.1, t);
-        break;
-
-      case 'timerUrgent':
-        this.playTone(1000, 0.05, 'square', 0.2, t);
-        this.playTone(800, 0.05, 'square', 0.15, t + 0.05);
-        break;
-
-      case 'click':
-        this.playTone(600, 0.04, 'sine', 0.15, t);
-        break;
-
-      case 'hover':
-        this.playTone(400, 0.02, 'sine', 0.05, t);
-        break;
-
-      case 'invalidMove':
-        this.playTone(200, 0.1, 'sawtooth', 0.2, t);
-        this.playTone(180, 0.1, 'sawtooth', 0.15, t + 0.08);
-        break;
-
-      case 'emote':
-        this.playTone(800, 0.05, 'sine', 0.2, t);
-        this.playTone(1000, 0.05, 'sine', 0.15, t + 0.04);
-        this.playTone(1200, 0.05, 'sine', 0.1, t + 0.08);
-        break;
-
-      case 'coinEarn':
-        this.playTone(880, 0.08, 'sine', 0.2, t);
-        this.playTone(1100, 0.08, 'sine', 0.25, t + 0.06);
-        this.playTone(1320, 0.12, 'sine', 0.3, t + 0.12);
-        break;
-
-      case 'purchase':
-        this.playTone(660, 0.06, 'sine', 0.2, t);
-        this.playTone(880, 0.06, 'sine', 0.2, t + 0.05);
-        this.playTone(1100, 0.1, 'sine', 0.25, t + 0.1);
-        break;
+      case 'pawnMove': tone(440, 0.08, 'sine', 0.3); tone(660, 0.08, 'sine', 0.2, 0.05); break;
+      case 'wallPlace': this.noise(0.1, 0.4, t); tone(200, 0.15, 'square', 0.12); break;
+      case 'turnStart': tone(523, 0.06, 'sine', 0.15); tone(659, 0.06, 'sine', 0.15, 0.06); break;
+      case 'win': [523, 659, 784].forEach((f, i) => tone(f, 0.15, 'sine', 0.3, i * 0.12)); tone(1047, 0.3, 'sine', 0.4, 0.36); break;
+      case 'lose': [440, 370, 311].forEach((f, i) => tone(f, 0.22, 'sawtooth', 0.18, i * 0.15)); break;
+      case 'timerUrgent': tone(1000, 0.05, 'square', 0.15); tone(800, 0.05, 'square', 0.1, 0.05); break;
+      case 'click': tone(600, 0.04, 'sine', 0.15); break;
+      case 'invalidMove': tone(200, 0.1, 'sawtooth', 0.2); tone(180, 0.1, 'sawtooth', 0.15, 0.08); break;
+      case 'emote': [800, 1000, 1200].forEach((f, i) => tone(f, 0.05, 'sine', 0.18, i * 0.04)); break;
+      case 'coinEarn': [880, 1100, 1320].forEach((f, i) => tone(f, 0.1, 'sine', 0.22, i * 0.06)); break;
+      case 'purchase': [660, 880, 1100].forEach((f, i) => tone(f, 0.08, 'sine', 0.22, i * 0.05)); break;
+      case 'star': tone(1320, 0.12, 'triangle', 0.25); tone(1760, 0.18, 'triangle', 0.2, 0.08); break;
+      case 'levelUp': [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, 0.14, 'triangle', 0.28, i * 0.08)); break;
     }
   }
 
-  /**
-   * Play a simple oscillator tone.
-   */
-  private playTone(
-    freq: number,
-    duration: number,
-    type: OscillatorType,
-    volume: number,
-    startTime: number
-  ): void {
-    if (!this.ctx || !this.masterGain) return;
-
+  private tone(freq: number, duration: number, type: OscillatorType, volume: number, start: number): void {
+    if (!this.ctx || !this.master) return;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
-
     osc.type = type;
     osc.frequency.value = freq;
-
-    gain.gain.setValueAtTime(0, startTime);
-    gain.gain.linearRampToValueAtTime(volume, startTime + 0.005);
-    gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
-
+    gain.gain.setValueAtTime(0, start);
+    gain.gain.linearRampToValueAtTime(volume, start + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
     osc.connect(gain);
-    gain.connect(this.masterGain);
-
-    osc.start(startTime);
-    osc.stop(startTime + duration + 0.01);
+    gain.connect(this.master);
+    osc.start(start);
+    osc.stop(start + duration + 0.01);
   }
 
-  /**
-   * Play filtered noise (for impact sounds).
-   */
-  private playNoise(duration: number, volume: number, startTime: number): void {
-    if (!this.ctx || !this.masterGain) return;
-
-    const bufferSize = this.ctx.sampleRate * duration;
-    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+  private noise(duration: number, volume: number, start: number): void {
+    if (!this.ctx || !this.master) return;
+    const size = Math.floor(this.ctx.sampleRate * duration);
+    const buffer = this.ctx.createBuffer(1, size, this.ctx.sampleRate);
     const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      data[i] = (Math.random() * 2 - 1) * 0.5;
-    }
-
+    for (let i = 0; i < size; i++) data[i] = (Math.random() * 2 - 1) * 0.5;
     const source = this.ctx.createBufferSource();
     source.buffer = buffer;
-
     const filter = this.ctx.createBiquadFilter();
     filter.type = 'lowpass';
     filter.frequency.value = 2000;
-
     const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(volume, startTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
-
+    gain.gain.setValueAtTime(volume, start);
+    gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
     source.connect(filter);
     filter.connect(gain);
-    gain.connect(this.masterGain);
-
-    source.start(startTime);
-    source.stop(startTime + duration + 0.01);
+    gain.connect(this.master);
+    source.start(start);
+    source.stop(start + duration + 0.01);
   }
 }
 
-// Singleton
 export const soundManager = new SoundManager();
