@@ -1,94 +1,96 @@
-# Rush Wall — Technical Documentation
+# Wall Duel — Technical documentation
 
 ## Overview
-Rush Wall is a competitive HTML5 browser strategy game inspired by Quoridor. Players race to navigate their pawn across a 9×9 grid while strategically placing walls to block their opponent's path. 
 
-The game supports:
-1. **Local 2-Player Mode**
-2. **Vs AI Mode** (Easy, Medium, Hard tiers)
-3. **Online Multiplayer** (Global matchmaking using Supabase Realtime)
+Wall Duel is a turn-based race on a 9×9 grid. Each turn a player either moves their pawn one square (jumping an adjacent rival) or places one of their 10 walls. House rule: walls may overlap halfway or cross; only an exact duplicate is rejected, and a wall may never remove a pawn's last route to its goal (checked with BFS).
 
-It is fully integrated with a custom Supabase backend for global leaderboards and matchmaking, while also supporting the CrazyGames SDK for game lifecycle events, Data Module persistence, and ad breaks.
+## Architecture
 
-## Technology Stack
-- **Framework:** React 18 with Vite
-- **Language:** TypeScript
-- **Backend / Realtime:** Supabase (PostgreSQL, Auth, Realtime Channels)
-- **Styling:** Vanilla CSS (CSS Variables, Glassmorphism, CSS Animations)
-- **Renderer:** HTML5 `<canvas>` via React `useRef`
-- **Audio:** Procedural Web Audio API (no external sound files required)
-
-## Project Structure
 ```
 src/
-├── App.tsx               # Main Router and layout wrapper
-├── index.css             # Global CSS Design System
-├── audio/
-│   └── soundManager.ts   # Procedural Web Audio API sound generation
-├── components/
-│   ├── game/             # Game UI (Canvas Board, Game Over modal)
-│   └── screens/          # App screens (Home, Game, Shop, Profile, Leaderboard, Matchmaking)
-├── context/
-│   └── GameContext.tsx   # Global state machine linking React UI, GameManager, and SDKs
+├── App.tsx                  App shell: splash, screen switch, nav
+├── styles.css               All styles; light/dark tokens; responsive layout
+├── config/
+│   ├── balance.ts           Coins, XP, timers, ad pacing, star margins
+│   └── brand.ts             Name, storage prefix, Realtime channel names
+├── context/GameContext.tsx  App state: boot, matches, rewards, ads, online wiring
 ├── game/
-│   ├── ai.ts             # Minimax algorithm & difficulty tiers
-│   ├── board.ts          # Core board logic & placement rules
-│   ├── gameManager.ts    # Game loop, turn timer, state machine
-│   ├── pathfinding.ts    # BFS path validation (ensuring a goal is always reachable)
-│   ├── rules.ts          # Pawn move & wall placement validation
-│   └── types.ts          # Shared TypeScript interfaces & types
+│   ├── types.ts             Core types and the default profile
+│   ├── board.ts             Walls, movement blocking, adjacency
+│   ├── rules.ts             Move validation, legal moves, win check
+│   ├── pathfinding.ts       BFS shortest path (AI, wall legality, ladder stars)
+│   ├── gameManager.ts       One match: turns, timer (with online grace), AI turns, events
+│   └── ai/
+│       ├── ai.ts            Easy / Medium / Hard / Nightmare engines
+│       ├── aiWorker.ts      Web Worker entry
+│       └── aiClient.ts      Worker client with main-thread fallback
+├── progression/
+│   ├── ladder.ts            15 rivals in 5 tiers, unlocks, stars
+│   └── xp.ts                Levels and rank tiers
+├── store/
+│   ├── cosmetics.ts         Catalog with render specs (used by board and shop)
+│   └── profile.ts           Save/load, shop, match rewards
 ├── sdk/
-│   ├── crazygames.ts     # Wrapper for CrazyGames SDK (ads, lifecycle)
-│   ├── supabase.ts       # Supabase client & Anonymous Auth initialization
-│   ├── multiplayer.ts    # Realtime networking, matchmaking logic, move syncing
-│   └── leaderboard.ts    # Database interactions for global ranking & profile sync
-└── store/
-    └── cosmetics.ts      # Virtual economy, items, local storage sync
+│   ├── crazygames.ts        CrazyGames SDK v3 wrapper (safe outside CrazyGames)
+│   ├── supabase.ts          Lazy Supabase client + anonymous auth
+│   ├── multiplayer.ts       Quick match, friend rooms, in-game channel
+│   └── leaderboard.ts       Online wins table
+└── components/
+    ├── game/                Board canvas, player cards, tutorial coach, results
+    ├── screens/             Home, Ladder, Shop, Profile, Online, Leaderboard, Rules, Game
+    └── shared/              Nav bar, chips, modal
 ```
 
-## Architecture & Core Systems
+## AI
 
-### 1. Game Engine & State Management
-The game logic is strictly separated from the React UI. `src/game/gameManager.ts` acts as the single source of truth (singleton pattern), holding the game state, turn timers, and player metadata (avatars, skins).
+| Level | How it plays |
+| --- | --- |
+| Easy | Mostly steps along its route, sometimes wanders, rarely walls |
+| Medium | Races its shortest route; when behind, drops the wall that hurts you most |
+| Hard | Alpha-beta search 2 moves deep (its move + your reply) |
+| Nightmare | Alpha-beta search 4 moves deep with a wide set of candidate walls |
 
-The React UI (`GameContext.tsx`) subscribes to events emitted by the `GameManager` using an event emitter pattern. `GameContext.tsx` handles the overarching app state (which screen is active, who the local player is) and proxies online moves between the `GameManager` and the `multiplayer.ts` SDK.
+Wall candidates are only walls that cut the rival's current shortest route, ranked by (rival path gain − own path loss). Ladder rivals add a `mistakeRate` (chance of a simple greedy move) to make a smooth difficulty curve. The search uses a typed-array board with make/undo moves (moves take well under 0.1 s) and runs in a Web Worker so the board never freezes. In test matches with random openings, Medium beat Easy 10/10, Hard beat Medium 14/20 and Nightmare beat Hard 10/12.
 
-### 2. Pathfinding & Validation
-The most critical rule in Rush Wall is that **a player's path to the goal can never be entirely blocked**.
-Whenever a wall placement is attempted, the engine performs a Breadth-First Search (BFS) in `pathfinding.ts` to ensure that both players still have a valid route to their respective goal rows. If `hasPathToGoal()` returns false, the move is rejected.
+## CrazyGames SDK v3
 
-### 3. Online Multiplayer Networking (Supabase Realtime)
-Online play is handled exclusively over WebSockets via Supabase Realtime (`multiplayer.ts`), circumventing the need for an authoritative custom game server.
+`index.html` loads `https://sdk.crazygames.com/crazygames-sdk-v3.js`. `src/sdk/crazygames.ts`:
 
-- **Matchmaking (`joinQueue`):** 
-  - Players join a global `matchmaking_lobby` channel and broadcast `ping` payloads containing their profile data (ID, name, equipped cosmetics, avatars) every second.
-  - Upon receiving a ping, players identify a match. The player with the *lower* alphanumeric user ID is automatically assigned as the Host (Player 0) and generates a unique `gameId`.
-  - The Host broadcasts a `match_made` event rapidly to ensure the Guest receives it. Both clients then transition into the game channel.
-- **Game Channel (`game_${gameId}`):**
-  - Used to synchronize standard gameplay events (`make_move`, `resign`, `emote`).
-  - Includes a heartbeat system (`ping`/`pong`) that runs every 3 seconds to detect opponent disconnections and auto-resolve the match.
+- `initSDK()` runs before anything else; `loadingStart/Stop` wrap profile loading.
+- `gameplayStart()` when a match starts; `gameplayStop()` when it ends or the player leaves.
+- **Data module**: the profile is saved with `SDK.data` (tied to the player's CrazyGames account); falls back to `localStorage` elsewhere. Saves from the old "Rush Wall" build are migrated once.
+- **Break ad** (`midgame`): requested when leaving the results screen after every 3rd finished match (`MATCHES_PER_BREAK_AD`). CrazyGames also applies its own frequency cap.
+- **Rewarded ad**: opt-in "Watch an ad: 2× coins" on the results screen. Coins are added only when `adFinished` fires.
+- Audio is suspended while any ad plays, and follows the site's `settings.muteAudio`.
+- `settings.disableChat` hides emotes in online matches.
+- **Invites**: `inviteLink({ room })` builds the friend link; `getInviteParam('room')` opens the online screen and joins automatically.
+- `happytime()` fires on new ladder stars, rank-ups and finishing the tutorial.
+- New players land directly in the tutorial match (CrazyGames "land in gameplay" requirement).
+- **Accounts**: logged-in CrazyGames players automatically play under their CrazyGames username (not editable) and their profile picture is equipped the first time; they can still choose a shop avatar ("My CrazyGames picture" stays available in the Shop). Guests see a "Log in with CrazyGames" button on the Profile screen. The picture is shared with opponents and the leaderboard as its URL. In the SDK's local test mode you are logged in as the mock user "User1".
 
-### 4. Global Leaderboard & Player Profiles
-Backend persistence relies on a PostgreSQL `leaderboard` table accessed via Supabase (`leaderboard.ts`).
-- **Authentication:** Handled seamlessly via Supabase Anonymous Auth linked to local storage sessions.
-- **Data Syncing (`ensureLeaderboardEntry`):** When a user views the leaderboard or joins a match, their local profile (Username, Avatar, Coins) is safely `UPDATE`d in the database without overwriting their wins/losses. If they don't exist, they are `INSERT`ed.
-- **Ranking Logic:** Ranks are determined by sorting `wins DESC`, then `coins DESC` (as a tie-breaker), then `last_played_at DESC`. Players with identical wins and coins are assigned the exact same numerical rank.
+## Online (Supabase Realtime)
 
-### 5. AI Implementation
-The AI (`ai.ts`) operates on three difficulty tiers:
-- **Easy:** Random valid moves (favors moving the pawn).
-- **Medium:** Greedy approach; uses BFS to find the shortest path to its own goal, and occasionally places random blocking walls.
-- **Hard:** Minimax with Alpha-Beta Pruning. Evaluates board states based on the difference in shortest path lengths between the AI and the player. Limits depth to maintain a fast framerate on web browsers.
+No game server: both clients run the same rules and exchange moves over broadcast channels.
 
-### 6. Canvas Renderer
-The 9×9 grid is rendered natively using the HTML5 Canvas API in `GameBoard.tsx`. This allows for rich glow effects, sub-pixel rendering, and excellent mobile performance. Pointer coordinates are translated to grid spaces with detection for whether the cursor is hovering over a "gap" (for wall placement) or a "cell" (for pawn movement). Avatars and Skins are dynamically passed from the state and rendered natively in the React HUD overlay.
+- **Quick match** (`wallduel_lobby`): players ping every second; the lower user id hosts and confirms the match repeatedly. After 20 s the player is offered a clearly labelled computer match.
+- **Friend rooms** (`wallduel_room_<CODE>`): the host waits; the guest sends `join` until the host answers `start`.
+- **Game channel** (`wallduel_game_<id>`): `move` (with sequence numbers to drop duplicates), `emote`, `resign`, `timeout`, heartbeat `hb` every 3 s, and `leave` on tab close. 12 s without any message counts as a disconnect.
+- **Timer**: each client runs the turn clock. The player whose clock hits zero loses on their own device and tells the other; the other side waits a 5 s grace period before claiming the win itself.
+- The online guest sees the board rotated so their pawn starts at the bottom.
 
-### 7. Procedural Audio
-To maintain an ultra-low bundle size for rapid browser loading, Rush Wall dynamically synthesizes blips, boops, and UI clicks using the native Web Audio API (`AudioContext`) in `soundManager.ts`.
+Leaderboard table `leaderboard` (Supabase): `user_id, username, wins, losses, coins, avatar, last_played_at`. Only online results change wins/losses.
 
-## Deployment
-To build the game for production (or for platforms like CrazyGames):
-```bash
-npm run build
-```
-This generates a minified bundle in the `/dist` directory that includes all assets, CSS, and JS chunks. Ensure that `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are provided in `.env` or as environment variables during build time.
+## Economy & progression (see `config/balance.ts`)
+
+- Coins: AI win 20/60/100/150 by difficulty, online win 80, same-device match 50, tutorial 100 (once), 25 per new ladder star, level-up 40 + 10 × level, rank-up 250.
+- XP: AI win 30–120 by difficulty (+10 per star), AI loss 10, online win 90 / loss 25, tutorial 60 (once), same-device 0.
+- Level n → n+1 needs 100 + 40 × (n − 1) XP. Ranks: Bronze 1, Silver 5, Gold 10, Platinum 18, Diamond 28.
+- Ladder stars: win = 1; rival still 3+ squares from goal = 2; 6+ = 3.
+
+## Publishing checklist
+
+1. `npm run build`, zip the contents of `dist/`, upload in the Developer Portal.
+2. In the portal, test in the QA tool at 800×450, 907×510 and fullscreen; check the event log shows `loadingStart/Stop` and `gameplayStart/Stop`.
+3. Add covers (landscape 1920×1080, portrait 800×1200, square 800×800) and a preview video; `branding/logo.png` is the 1024×1024 source.
+4. Fill in description and controls (mouse: click dots / click between squares; W wall mode, R rotate; touch: tap Wall, tap to aim, tap ✓).
+5. Privacy: online play stores names, avatars and online results in Supabase, so the game shows a short notice on the Online and Leaderboard screens linking to an in-game Privacy policy screen (`src/components/screens/PrivacyScreen.tsx`, contact email at the top of that file). CrazyGames accepts an in-game policy. Opening the leaderboard only reads data; a row is created when you play online. Keep the policy text in sync if you change what is stored.
