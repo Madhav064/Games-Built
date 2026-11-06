@@ -1,0 +1,126 @@
+<!doctype html>
+<!--
+  Wall Duel — cover art source.
+  Render with headless Chrome at the exact size, e.g.
+    chrome --headless=new --window-size=1920,1080 --screenshot=out.png "cover.html?layout=landscape"
+  Layouts: landscape (1920x1080), portrait (800x1200), square (800x800).
+  CrazyGames rules: title text only, no logos/icons/borders; top-left is kept clear for their label.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; }
+  body {
+    background:
+      radial-gradient(ellipse at 75% 35%, rgba(99, 102, 241, 0.55) 0%, transparent 55%),
+      radial-gradient(ellipse at 20% 85%, rgba(236, 72, 153, 0.35) 0%, transparent 50%),
+      radial-gradient(ellipse at 10% 10%, rgba(56, 189, 248, 0.25) 0%, transparent 40%),
+      linear-gradient(160deg, #1a1650 0%, #0b0a24 60%, #070616 100%);
+    font-family: 'Arial Black', 'Segoe UI Black', Arial, sans-serif;
+    position: relative;
+  }
+  .stars { position: absolute; inset: 0; }
+  .stage { position: absolute; perspective: 1600px; }
+  .board {
+    position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+    border-radius: 4%;
+    background: linear-gradient(145deg, #2b2470, #15123a);
+    box-shadow: 0 40px 80px rgba(0,0,0,0.6), 0 0 0 3px rgba(196,181,253,0.25) inset, 0 0 120px rgba(129,140,248,0.35);
+    transform-style: preserve-3d;
+  }
+  .cell { position: absolute; border-radius: 16%; }
+  .wall { position: absolute; border-radius: 999px; }
+  .pawn { position: absolute; border-radius: 50%; }
+  .dot { position: absolute; border-radius: 50%; }
+  .title {
+    position: absolute; line-height: 0.88; letter-spacing: 0.02em; text-transform: uppercase;
+    filter: drop-shadow(0 10px 0 rgba(0,0,0,0.35)) drop-shadow(0 0 40px rgba(129,140,248,0.55));
+  }
+  .title span { display: block; }
+  .t1 { background: linear-gradient(180deg, #ffffff 0%, #c7d2fe 100%); -webkit-background-clip: text; color: transparent; }
+  .t2 { background: linear-gradient(180deg, #fde68a 0%, #f59e0b 100%); -webkit-background-clip: text; color: transparent; }
+</style>
+</head>
+<body>
+<canvas class="stars" id="stars"></canvas>
+<div class="stage" id="stage"><div class="board" id="board"></div></div>
+<div class="title" id="title"><span class="t1">Wall</span><span class="t2">Duel</span></div>
+<script>
+  const layout = new URLSearchParams(location.search).get('layout') || 'landscape';
+  const W = innerWidth, H = innerHeight;
+
+  // ---- layout per format: board box + tilt, title box ----
+  const L = {
+    landscape: { board: { x: 0.50, y: 0.10, s: 0.80 * H }, tilt: 'rotateX(28deg) rotateZ(-10deg)', title: { x: 0.06, y: 0.32, size: 0.20 * H, align: 'left' } },
+    portrait:  { board: { x: 0.10, y: 0.40, s: 0.80 * W }, tilt: 'rotateX(30deg) rotateZ(-8deg)',  title: { x: 0.0,  y: 0.10, size: 0.115 * H, align: 'center' } },
+    square:    { board: { x: 0.21, y: 0.03, s: 0.58 * W }, tilt: 'rotateX(32deg) rotateZ(-9deg)',  title: { x: 0.0,  y: 0.735, size: 0.13 * H, align: 'center', inline: true } },
+  }[layout];
+
+  // ---- starfield ----
+  const sc = document.getElementById('stars'); sc.width = W; sc.height = H;
+  const sx = sc.getContext('2d');
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < (W * H) / 9000; i++) {
+    sx.fillStyle = `rgba(255,255,255,${0.15 + rnd() * 0.5})`;
+    sx.beginPath(); sx.arc(rnd() * W, rnd() * H, rnd() * 1.6 + 0.3, 0, Math.PI * 2); sx.fill();
+  }
+
+  // ---- board ----
+  const stage = document.getElementById('stage');
+  const S = L.board.s;
+  Object.assign(stage.style, { left: L.board.x * W + 'px', top: L.board.y * H + 'px', width: S + 'px', height: S + 'px' });
+  const board = document.getElementById('board');
+  board.style.transform = L.tilt;
+  const pad = S * 0.045, gap = S * 0.02, cell = (S - pad * 2 - gap * 8) / 9, unit = cell + gap;
+  const add = (cls, css) => { const d = document.createElement('div'); d.className = cls; Object.assign(d.style, css); board.appendChild(d); return d; };
+
+  for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) {
+    let bg = (r + c) % 2 ? '#2a2466' : '#322c78';
+    if (r === 0) bg = 'linear-gradient(180deg,#2f5fae,#2a4c95)';      // blue's goal row
+    if (r === 8) bg = 'linear-gradient(180deg,#8a2f63,#7a2756)';      // red's goal row
+    add('cell', { left: pad + c * unit + 'px', top: pad + r * unit + 'px', width: cell + 'px', height: cell + 'px', background: bg, boxShadow: 'inset 0 -3px 0 rgba(0,0,0,0.25)' });
+  }
+
+  const wall = (row, col, o, colors, glow) => {
+    const thick = gap * 0.95, long = cell * 2 + gap;
+    const x = pad + col * unit, y = pad + row * unit;
+    const css = o === 'h'
+      ? { left: x + 'px', top: y + cell + (gap - thick) / 2 + 'px', width: long + 'px', height: thick + 'px', background: `linear-gradient(90deg, ${colors})` }
+      : { left: x + cell + (gap - thick) / 2 + 'px', top: y + 'px', width: thick + 'px', height: long + 'px', background: `linear-gradient(180deg, ${colors})` };
+    add('wall', { ...css, boxShadow: `0 0 ${gap * 1.6}px ${glow}, 0 0 ${gap * 0.6}px ${glow}` });
+  };
+  const FIRE = ['#ff3d00, #ffb300', '#ff6d00'];
+  const ICE = ['#e0f7ff, #38bdf8', '#7dd3fc'];
+  // A mid-game maze, including the crossing walls the game allows.
+  wall(2, 3, 'h', ...FIRE); wall(2, 3, 'v', ...FIRE);
+  wall(1, 5, 'h', ...FIRE); wall(4, 1, 'h', ...FIRE);
+  wall(5, 4, 'h', ...ICE);  wall(5, 4, 'v', ...ICE);
+  wall(6, 6, 'h', ...ICE);  wall(3, 6, 'v', ...ICE);
+
+  const pawn = (r, c, main, shade) => {
+    const d = cell * 0.7;
+    add('pawn', {
+      left: pad + c * unit + (cell - d) / 2 + 'px', top: pad + r * unit + (cell - d) / 2 + 'px', width: d + 'px', height: d + 'px',
+      background: `radial-gradient(circle at 32% 28%, #ffffff 0%, ${main} 38%, ${shade} 100%)`,
+      boxShadow: `0 ${d * 0.18}px ${d * 0.25}px rgba(0,0,0,0.5), 0 0 ${d * 0.6}px ${main}`,
+    });
+  };
+  const dot = (r, c, color) => {
+    const d = cell * 0.32;
+    add('dot', { left: pad + c * unit + (cell - d) / 2 + 'px', top: pad + r * unit + (cell - d) / 2 + 'px', width: d + 'px', height: d + 'px', border: `${cell * 0.05}px solid ${color}`, background: color.replace('1)', '0.35)') });
+  };
+  pawn(6, 4, '#38bdf8', '#0b4a9e');   // blue, racing up
+  pawn(3, 5, '#fb7185', '#9f1239');   // red, racing down
+  dot(6, 3, 'rgba(125,211,252,1)'); dot(7, 4, 'rgba(125,211,252,1)'); dot(6, 5, 'rgba(125,211,252,1)');
+
+  // ---- title ----
+  const t = document.getElementById('title');
+  const T = L.title;
+  Object.assign(t.style, { fontSize: T.size + 'px', textAlign: T.align, top: T.y * H + 'px' });
+  if (T.align === 'center') Object.assign(t.style, { left: 0, right: 0 }); else t.style.left = T.x * W + 'px';
+  if (T.inline) t.querySelectorAll('span').forEach(s => { s.style.display = 'inline'; s.style.margin = '0 0.12em'; });
+</script>
+</body>
+</html>
