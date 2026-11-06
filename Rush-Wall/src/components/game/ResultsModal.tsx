@@ -12,8 +12,8 @@ import { REWARDED_COIN_MULTIPLIER } from '../../config/balance';
 import { Modal } from '../shared/Modal';
 
 export function ResultsModal() {
-  const { state, continueAfterMatch, claimRewardedBonus } = useGame();
-  const { gameState, rewards, match, localPlayerId, bonusClaimed } = state;
+  const { state, continueAfterMatch, claimRewardedBonus, requestRematch } = useGame();
+  const { gameState, rewards, match, localPlayerId, bonusClaimed, rematch } = state;
   const [busy, setBusy] = useState(false);
   const [xpShown, setXpShown] = useState(0);
 
@@ -33,6 +33,7 @@ export function ResultsModal() {
   const nextRival = rival && won ? rivalAfter(rival.id) : undefined;
   const leveledUp = rewards.levelAfter > rewards.levelBefore;
   const rank = rankForLevel(rewards.levelAfter);
+  const opponentName = gameState.players[opponentOf(localPlayerId)].name;
 
   const reason: Record<GameEndReason, string> = {
     goal_reached: `${winner.name} reached the far side`,
@@ -98,7 +99,15 @@ export function ResultsModal() {
       <div className="result-actions">
         {match.kind === 'tutorial' && <button className="btn btn-primary btn-full btn-lg" disabled={busy} onClick={() => go('home')}>Continue</button>}
         {nextRival && <button className="btn btn-primary btn-full btn-lg" disabled={busy} onClick={() => go('next')}>Next rival: {nextRival.name} ▶</button>}
-        {match.kind === 'online' && <button className="btn btn-primary btn-full btn-lg" disabled={busy} onClick={() => go('rematch')}>Find a new match</button>}
+        {match.kind === 'online' && !rematch.opponentLeft && (
+          <button className="btn btn-primary btn-full btn-lg" disabled={busy || rematch.mine} onClick={requestRematch}>
+            {rematch.mine ? `Waiting for ${opponentName}…` : rematch.theirs ? `Rematch · ${opponentName} is ready!` : 'Rematch'}
+          </button>
+        )}
+        {match.kind === 'online' && rematch.opponentLeft && <p className="result-reason">{opponentName} left the room.</p>}
+        {match.kind === 'online' && (
+          <button className="btn btn-secondary btn-full" disabled={busy} onClick={() => go('rematch')}>Find a new opponent</button>
+        )}
         {(match.kind === 'ai' || match.kind === 'local') && (
           <button className={`btn ${nextRival ? 'btn-secondary' : 'btn-primary btn-lg'} btn-full`} disabled={busy} onClick={() => go('rematch')}>
             {rival ? (won ? 'Replay for more stars' : 'Try again') : 'Play again'}
