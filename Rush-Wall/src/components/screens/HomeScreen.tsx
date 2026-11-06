@@ -1,158 +1,102 @@
 // ============================================================
-// Rush Wall — Home Screen
+// Wall Duel — Home: one tap to the next rival, plus every mode
 // ============================================================
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useGame } from '../../context/GameContext';
-import { GameMode, AIDifficulty } from '../../game/types';
-import { soundManager } from '../../audio/soundManager';
-import { getPlayerRank } from '../../sdk/leaderboard';
+import { AIDifficulty } from '../../game/types';
+import { GAME_NAME } from '../../config/brand';
+import { LADDER, nextRival, totalStars, ALL_RIVALS } from '../../progression/ladder';
+import { avatarImage } from '../../store/cosmetics';
+import { ProfileChips } from '../shared/ProfileChips';
+
+const DIFFICULTIES: { id: AIDifficulty; label: string; desc: string; stars: number }[] = [
+  { id: AIDifficulty.Easy, label: 'Easy', desc: 'Relaxed, great for learning', stars: 1 },
+  { id: AIDifficulty.Medium, label: 'Medium', desc: 'Races and blocks when behind', stars: 2 },
+  { id: AIDifficulty.Hard, label: 'Hard', desc: 'Thinks a couple of moves ahead', stars: 3 },
+  { id: AIDifficulty.Nightmare, label: 'Nightmare', desc: 'Deep search. Bring your best.', stars: 4 },
+];
 
 export function HomeScreen() {
-  const { state, dispatch, startGame, toggleTheme } = useGame();
-  const [showDifficulty, setShowDifficulty] = useState(false);
-  const [onlineWins, setOnlineWins] = useState(0);
-  const [onlineLosses, setOnlineLosses] = useState(0);
+  const { state, navigate, startAIMatch, startLocalMatch, updateSettings } = useGame();
   const { profile } = state;
-
-  useEffect(() => {
-    getPlayerRank().then(({ onlineWins: w, onlineLosses: l }) => {
-      setOnlineWins(w);
-      setOnlineLosses(l);
-    }).catch(() => {});
-  }, []);
-
-  const handleAIClick = () => {
-    soundManager.init();
-    soundManager.play('click');
-    setShowDifficulty(true);
-  };
-
-  const handleStartAI = (difficulty: AIDifficulty) => {
-    soundManager.play('click');
-    startGame(GameMode.VsAI, difficulty);
-  };
-
-  const handleLocalPlay = () => {
-    soundManager.init();
-    soundManager.play('click');
-    startGame(GameMode.Local);
-  };
-
-  const navigateTo = (screen: 'shop' | 'profile' | 'howToPlay' | 'matchmaking' | 'leaderboard') => {
-    soundManager.init();
-    soundManager.play('click');
-    dispatch({ type: 'SET_SCREEN', screen });
-  };
+  const [picker, setPicker] = useState(false);
+  const rival = nextRival(profile.ladderStars);
+  const tier = LADDER.find(t => t.rivals.some(r => r.id === rival.id))!;
+  const stars = profile.ladderStars[rival.id] ?? 0;
 
   return (
-    <div className="screen home-screen" style={{ position: 'relative' }}>
-      {/* Theme Toggle */}
-      <button 
-        className="btn-icon" 
-        onClick={toggleTheme}
-        style={{ position: 'absolute', top: 16, right: 16, background: 'var(--color-bg-card)', border: '1px solid var(--color-border)' }}
-        aria-label="Toggle Theme"
-      >
-        {state.theme === 'light' ? '🌙' : '☀️'}
-      </button>
-
-      {/* Logo Section */}
-      <div className="home-logo-section" style={{ marginBottom: '16px' }}>
-        <img src="./logo.png" alt="Rush Wall Logo" style={{ width: '180px', height: 'auto', borderRadius: '16px' }} />
-      </div>
-
-      {/* Stats Row */}
-      <div className="home-stats-row">
-        <div className="badge badge-amber">
-          🪙 {profile.coins}
+    <div className="screen menu-screen home-screen">
+      <header className="menu-header">
+        <div className="brand">
+          <img src="./icon.svg" alt="" className="brand-icon" />
+          <span className="brand-name">{GAME_NAME}</span>
         </div>
-        <div className="badge">
-          🏆 {onlineWins}W / {onlineLosses}L
-        </div>
-      </div>
+        <ProfileChips />
+        <button
+          className="btn-icon"
+          onClick={() => updateSettings({ theme: profile.settings.theme === 'light' ? 'dark' : 'light' })}
+          aria-label="Toggle light or dark theme"
+        >{profile.settings.theme === 'light' ? '🌙' : '☀️'}</button>
+      </header>
 
-      {/* Main Menu */}
-      {!showDifficulty ? (
-        <>
-          <div className="home-menu">
-            <div className="menu-card" onClick={handleAIClick}>
-              <div className="menu-card-icon">🤖</div>
-              <div className="menu-card-text">
-                <h3>Play vs AI</h3>
-                <p>Choose difficulty & practice</p>
-              </div>
-              <span className="menu-card-arrow">›</span>
-            </div>
-
-            <div className="menu-card" onClick={handleLocalPlay}>
-              <div className="menu-card-icon">👥</div>
-              <div className="menu-card-text">
-                <h3>Local 2P</h3>
-                <p>Same device</p>
-              </div>
-              <span className="menu-card-arrow">›</span>
-            </div>
-
-            <div className="menu-card" onClick={() => navigateTo('matchmaking')}>
-              <div className="menu-card-icon">🌐</div>
-              <div className="menu-card-text">
-                <h3>Online</h3>
-                <p>Play vs World</p>
-              </div>
-              <span className="menu-card-arrow">›</span>
-            </div>
-
-            <div className="menu-card" onClick={() => navigateTo('howToPlay')}>
-              <div className="menu-card-icon">📖</div>
-              <div className="menu-card-text">
-                <h3>How to Play</h3>
-                <p>Learn the rules</p>
-              </div>
-              <span className="menu-card-arrow">›</span>
-            </div>
-          </div>
-        </>
-      ) : (
-        /* Difficulty Picker */
-        <div className="difficulty-picker">
-          <h3 className="text-center mb-4" style={{ fontSize: '1.1rem' }}>
-            Select Difficulty
-          </h3>
-
-          <div className="difficulty-btn" onClick={() => handleStartAI(AIDifficulty.Easy)}>
+      <div className="home-grid">
+        <section className="hero-card">
+          <div className="hero-label">{tier.name} · Next rival</div>
+          <div className="hero-rival">
+            <img src={avatarImage(rival.avatar)} alt="" />
             <div>
-              <div className="difficulty-label">Easy</div>
-              <div className="difficulty-desc">Random moves, great for learning</div>
+              <div className="hero-name">{rival.name}</div>
+              <div className="hero-tagline">{rival.tagline}</div>
+              <div className="hero-stars">{[1, 2, 3].map(i => <span key={i} className={i <= stars ? 'on' : ''}>★</span>)}</div>
             </div>
-            <div className="difficulty-stars">⭐</div>
           </div>
-
-          <div className="difficulty-btn" onClick={() => handleStartAI(AIDifficulty.Medium)}>
-            <div>
-              <div className="difficulty-label">Medium</div>
-              <div className="difficulty-desc">Strategic play, a fair challenge</div>
-            </div>
-            <div className="difficulty-stars">⭐⭐</div>
-          </div>
-
-          <div className="difficulty-btn" onClick={() => handleStartAI(AIDifficulty.Hard)}>
-            <div>
-              <div className="difficulty-label">Hard</div>
-              <div className="difficulty-desc">Advanced AI, prepare yourself</div>
-            </div>
-            <div className="difficulty-stars">⭐⭐⭐</div>
-          </div>
-
-          <button
-            className="btn btn-ghost btn-full mt-3"
-            onClick={() => { soundManager.play('click'); setShowDifficulty(false); }}
-          >
-            ← Back
+          <button className="btn btn-primary btn-lg btn-full play-btn" onClick={() => startAIMatch(rival.ai.difficulty, rival.id)}>
+            ▶ Play
           </button>
-        </div>
-      )}
+          <button className="link-btn" onClick={() => navigate('ladder')}>
+            Ladder progress: {totalStars(profile.ladderStars)} / {ALL_RIVALS.length * 3} ★
+          </button>
+        </section>
 
+        <section className="mode-list">
+          {!picker ? (
+            <>
+              <button className="mode-card" onClick={() => navigate('online')}>
+                <span className="mode-icon">🌐</span>
+                <span className="mode-text"><strong>Online</strong><small>Quick match or play a friend</small></span>
+                <span className="mode-arrow">›</span>
+              </button>
+              <button className="mode-card" onClick={() => setPicker(true)}>
+                <span className="mode-icon">🤖</span>
+                <span className="mode-text"><strong>Quick vs Computer</strong><small>Pick a difficulty</small></span>
+                <span className="mode-arrow">›</span>
+              </button>
+              <button className="mode-card" onClick={startLocalMatch}>
+                <span className="mode-icon">👥</span>
+                <span className="mode-text"><strong>Same device</strong><small>Pass and play with a friend</small></span>
+                <span className="mode-arrow">›</span>
+              </button>
+              <button className="mode-card" onClick={() => navigate('howToPlay')}>
+                <span className="mode-icon">📖</span>
+                <span className="mode-text"><strong>How to play</strong><small>Rules, jumps and tips</small></span>
+                <span className="mode-arrow">›</span>
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="picker-title">Choose a difficulty</div>
+              {DIFFICULTIES.map(d => (
+                <button key={d.id} className="mode-card" onClick={() => startAIMatch(d.id)}>
+                  <span className="mode-text"><strong>{d.label}</strong><small>{d.desc}</small></span>
+                  <span className="difficulty-stars">{'★'.repeat(d.stars)}</span>
+                </button>
+              ))}
+              <button className="btn btn-ghost btn-full" onClick={() => setPicker(false)}>← Back</button>
+            </>
+          )}
+        </section>
+      </div>
     </div>
   );
 }
