@@ -1,239 +1,183 @@
 // ============================================================
-// Rush Wall — Cosmetics Store & Player Profile
+// Wall Duel — Cosmetics catalog
+// Every item carries render data used by BOTH the canvas board
+// and the shop previews, so they can never disagree.
 // ============================================================
 
-import { type CosmeticItem, type PlayerProfile, DEFAULT_PROFILE } from '../game/types';
-import { saveData, loadData } from '../sdk/crazygames';
+import type { CosmeticItem, Rarity } from '../game/types';
 
-const PROFILE_KEY = 'player_profile';
+// ------------------------------------------------------------
+// Render specs
+// ------------------------------------------------------------
+export interface PawnSpec {
+  /** Main colour and darker shade for the glossy sphere. */
+  color: string;
+  shade: string;
+  /** Optional second colour for two-tone pawns. */
+  accent?: string;
+  icon?: string;
+}
 
-// ============================================================
-// Cosmetics Catalog
-// ============================================================
+export type WallStyle = 'match' | 'solid' | 'gradient' | 'rainbow';
+export interface WallSpec {
+  style: WallStyle;
+  /** Colours along the wall (ignored by 'match', which copies the pawn colour). */
+  colors: string[];
+  glow?: string;
+}
 
-export const COSMETICS: CosmeticItem[] = [
-  // === PAWN SKINS (default unlocked) ===
-  { id: 'pawn_blue', name: 'Sapphire Blue', type: 'pawn', price: 0, preview: '#2563eb', unlocked: true },
-  { id: 'pawn_red', name: 'Crimson Red', type: 'pawn', price: 0, preview: '#ef4444', unlocked: true },
+export interface BoardSpec {
+  /** Classic theme follows the app's light/dark mode. */
+  followsAppTheme?: boolean;
+  frame: string;
+  surface: string;
+  cellA: string;
+  cellB: string;
+  /** Tint of each player's goal row. */
+  goalTint: number;
+  edge: string;
+}
 
-  // === PAWN SKINS (purchasable) ===
-  { id: 'pawn_cyan', name: 'Cyan Crystal', type: 'pawn', price: 100, preview: '#00d4ff', unlocked: false },
-  { id: 'pawn_amber', name: 'Amber Gem', type: 'pawn', price: 100, preview: '#ffc857', unlocked: false },
-  { id: 'pawn_emerald', name: 'Emerald Blaze', type: 'pawn', price: 150, preview: '#00ff88', unlocked: false },
-  { id: 'pawn_ruby', name: 'Ruby Fire', type: 'pawn', price: 150, preview: '#ff3366', icon: '🔥', unlocked: false },
-  { id: 'pawn_violet', name: 'Violet Storm', type: 'pawn', price: 200, preview: '#9b59b6', icon: '⚡', unlocked: false },
-  { id: 'pawn_gold', name: 'Golden Crown', type: 'pawn', price: 500, preview: '#f7d000', icon: '👑', unlocked: false },
-  { id: 'pawn_diamond', name: 'Diamond Prism', type: 'pawn', price: 1000, preview: 'linear-gradient(135deg, #ff9eb5, #a8edea)', icon: '♦️', unlocked: false },
-  { id: 'pawn_nebula', name: 'Nebula Core', type: 'pawn', price: 800, preview: '#302b63', icon: '🪐', unlocked: false },
+export interface PawnItem extends CosmeticItem { type: 'pawn'; spec: PawnSpec }
+export interface WallItem extends CosmeticItem { type: 'wall'; spec: WallSpec }
+export interface BoardItem extends CosmeticItem { type: 'board'; spec: BoardSpec }
+export interface EmoteItem extends CosmeticItem { type: 'emote'; emoji: string }
+export interface AvatarItem extends CosmeticItem { type: 'avatar'; image: string }
+export type AnyCosmetic = PawnItem | WallItem | BoardItem | EmoteItem | AvatarItem;
 
-  // === WALL SKINS ===
-  { id: 'wall_default', name: 'Match Pawn', type: 'wall', price: 0, preview: 'linear-gradient(135deg, #00b4d8 50%, #ef4444 50%)', unlocked: true },
-  { id: 'wall_classic', name: 'Classic Wall', type: 'wall', price: 0, preview: '#4a9eff', unlocked: true },
-  { id: 'wall_neon_green', name: 'Neon Green', type: 'wall', price: 200, preview: '#39ff14', unlocked: false },
-  { id: 'wall_fire', name: 'Firewall', type: 'wall', price: 300, preview: 'linear-gradient(180deg, #ff4500, #ff8c00)', unlocked: false },
-  { id: 'wall_ice', name: 'Ice Barrier', type: 'wall', price: 300, preview: 'linear-gradient(180deg, #00bfff, #87ceeb)', unlocked: false },
-  { id: 'wall_rainbow', name: 'Rainbow Wall', type: 'wall', price: 750, preview: 'linear-gradient(90deg, #ff0000, #ff7700, #ffff00, #00ff00, #0000ff, #8b00ff)', unlocked: false },
-  { id: 'wall_shadow', name: 'Shadow Gate', type: 'wall', price: 500, preview: 'linear-gradient(180deg, #2c3e50, #000000)', unlocked: false },
+// ------------------------------------------------------------
+// Catalog (ids are kept from earlier builds so saved profiles still match)
+// ------------------------------------------------------------
+const pawn = (id: string, name: string, price: number, rarity: Rarity, spec: PawnSpec, free = false): PawnItem =>
+  ({ id, name, type: 'pawn', price, rarity, spec, free });
+const wall = (id: string, name: string, price: number, rarity: Rarity, spec: WallSpec, free = false): WallItem =>
+  ({ id, name, type: 'wall', price, rarity, spec, free });
+const board = (id: string, name: string, price: number, rarity: Rarity, spec: BoardSpec, free = false): BoardItem =>
+  ({ id, name, type: 'board', price, rarity, spec, free });
+const emote = (id: string, name: string, price: number, rarity: Rarity, emoji: string, free = false): EmoteItem =>
+  ({ id, name, type: 'emote', price, rarity, emoji, free });
 
-  // === BOARD THEMES ===
-  { id: 'board_default', name: 'Classic Dark', type: 'board', price: 0, preview: '#1a1a2e', unlocked: true },
-  { id: 'board_ocean', name: 'Deep Ocean', type: 'board', price: 400, preview: 'linear-gradient(180deg, #0c3547, #134e5e)', unlocked: false },
-  { id: 'board_forest', name: 'Enchanted Forest', type: 'board', price: 400, preview: 'linear-gradient(180deg, #1a2a1a, #2d4a2d)', unlocked: false },
-  { id: 'board_crimson', name: 'Crimson Arena', type: 'board', price: 400, preview: 'linear-gradient(180deg, #2e1a1a, #4a2d2d)', unlocked: false },
-  { id: 'board_galaxy', name: 'Galaxy Board', type: 'board', price: 800, preview: 'linear-gradient(135deg, #0f0c29, #302b63, #24243e)', unlocked: false },
-
-  // === EMOTES ===
-  { id: 'emote_smile', name: 'Smile Emote', type: 'emote', price: 0, preview: '😊', unlocked: true },
-  { id: 'emote_gg', name: '"GG" Emote', type: 'emote', price: 50, preview: '🤝', unlocked: false },
-  { id: 'emote_fire', name: 'Fire Emote', type: 'emote', price: 50, preview: '🔥', unlocked: false },
-  { id: 'emote_heart', name: 'Heart Emote', type: 'emote', price: 50, preview: '❤️', unlocked: false },
-  { id: 'emote_thumbs_up', name: 'Thumbs Up', type: 'emote', price: 50, preview: '👍', unlocked: false },
-  { id: 'emote_think', name: 'Thinking Emote', type: 'emote', price: 75, preview: '🤔', unlocked: false },
-  { id: 'emote_laugh', name: 'Laugh Emote', type: 'emote', price: 75, preview: '😂', unlocked: false },
-  { id: 'emote_cool', name: 'Cool Emote', type: 'emote', price: 75, preview: '😎', unlocked: false },
-  { id: 'emote_angry', name: 'Angry Emote', type: 'emote', price: 75, preview: '😡', unlocked: false },
-  { id: 'emote_mind_blown', name: 'Mind Blown', type: 'emote', price: 100, preview: '🤯', unlocked: false },
-  { id: 'emote_ghost', name: 'Ghost Emote', type: 'emote', price: 150, preview: '👻', unlocked: false },
-  { id: 'emote_crown', name: 'Crown Emote', type: 'emote', price: 200, preview: '👑', unlocked: false },
-  { id: 'emote_diamond', name: 'Diamond Emote', type: 'emote', price: 250, preview: '💎', unlocked: false },
-
-  // === AVATARS ===
-  { id: 'avatar_1', name: 'Avatar 1', type: 'avatar', price: 0, preview: './avatars/avatar_1.png', unlocked: true },
-  { id: 'avatar_2', name: 'Avatar 2', type: 'avatar', price: 0, preview: './avatars/avatar_2.png', unlocked: true },
-  { id: 'avatar_3', name: 'Avatar 3', type: 'avatar', price: 0, preview: './avatars/avatar_3.png', unlocked: true },
-  { id: 'avatar_4', name: 'Avatar 4', type: 'avatar', price: 0, preview: './avatars/avatar_4.png', unlocked: true },
-  { id: 'avatar_5', name: 'Avatar 5', type: 'avatar', price: 0, preview: './avatars/avatar_5.png', unlocked: true },
-  { id: 'avatar_6', name: 'Avatar 6', type: 'avatar', price: 0, preview: './avatars/avatar_6.png', unlocked: true },
-  { id: 'avatar_7', name: 'Avatar 7', type: 'avatar', price: 100, preview: './avatars/avatar_7.png', unlocked: false },
-  { id: 'avatar_8', name: 'Avatar 8', type: 'avatar', price: 100, preview: './avatars/avatar_8.png', unlocked: false },
-  { id: 'avatar_9', name: 'Avatar 9', type: 'avatar', price: 150, preview: './avatars/avatar_9.png', unlocked: false },
-  { id: 'avatar_10', name: 'Avatar 10', type: 'avatar', price: 150, preview: './avatars/avatar_10.png', unlocked: false },
-  { id: 'avatar_11', name: 'Avatar 11', type: 'avatar', price: 200, preview: './avatars/avatar_11.png', unlocked: false },
-  { id: 'avatar_12', name: 'Avatar 12', type: 'avatar', price: 200, preview: './avatars/avatar_12.png', unlocked: false },
-  { id: 'avatar_13', name: 'Avatar 13', type: 'avatar', price: 250, preview: './avatars/avatar_13.png', unlocked: false },
-  { id: 'avatar_14', name: 'Avatar 14', type: 'avatar', price: 250, preview: './avatars/avatar_14.png', unlocked: false },
-  { id: 'avatar_15', name: 'Avatar 15', type: 'avatar', price: 300, preview: './avatars/avatar_15.png', unlocked: false },
-  { id: 'avatar_16', name: 'Avatar 16', type: 'avatar', price: 300, preview: './avatars/avatar_16.png', unlocked: false },
-  { id: 'avatar_17', name: 'Avatar 17', type: 'avatar', price: 350, preview: './avatars/avatar_17.png', unlocked: false },
-  { id: 'avatar_18', name: 'Avatar 18', type: 'avatar', price: 350, preview: './avatars/avatar_18.png', unlocked: false },
-  { id: 'avatar_19', name: 'Avatar 19', type: 'avatar', price: 400, preview: './avatars/avatar_19.png', unlocked: false },
-  { id: 'avatar_20', name: 'Avatar 20', type: 'avatar', price: 400, preview: './avatars/avatar_20.png', unlocked: false },
-  { id: 'avatar_21', name: 'Avatar 21', type: 'avatar', price: 500, preview: './avatars/avatar_21.png', unlocked: false },
+export const PAWNS: PawnItem[] = [
+  pawn('pawn_blue', 'Sapphire', 0, 'common', { color: '#2f8cff', shade: '#1450b8' }, true),
+  pawn('pawn_red', 'Crimson', 0, 'common', { color: '#f04848', shade: '#a81c2c' }, true),
+  pawn('pawn_cyan', 'Cyan Crystal', 100, 'common', { color: '#22d3ee', shade: '#0e7490' }),
+  pawn('pawn_amber', 'Amber Gem', 100, 'common', { color: '#fbbf24', shade: '#b45309' }),
+  pawn('pawn_emerald', 'Emerald', 150, 'rare', { color: '#34d399', shade: '#047857' }),
+  pawn('pawn_ruby', 'Ruby Fire', 150, 'rare', { color: '#fb3a6b', shade: '#9f1239', icon: '🔥' }),
+  pawn('pawn_violet', 'Violet Storm', 200, 'rare', { color: '#a855f7', shade: '#6b21a8', icon: '⚡' }),
+  pawn('pawn_gold', 'Golden Crown', 500, 'epic', { color: '#facc15', shade: '#a16207', icon: '👑' }),
+  pawn('pawn_nebula', 'Nebula Core', 800, 'epic', { color: '#6366f1', shade: '#1e1b4b', accent: '#ec4899', icon: '🪐' }),
+  pawn('pawn_diamond', 'Diamond Prism', 1000, 'legendary', { color: '#a5f3fc', shade: '#6d28d9', accent: '#f9a8d4', icon: '💎' }),
 ];
 
-// ============================================================
-// Profile Management
-// ============================================================
+export const WALLS: WallItem[] = [
+  wall('wall_default', 'Match Pawn', 0, 'common', { style: 'match', colors: [] }, true),
+  wall('wall_classic', 'Oak', 0, 'common', { style: 'gradient', colors: ['#d6a46a', '#a86b32'] }, true),
+  wall('wall_neon_green', 'Neon Green', 200, 'rare', { style: 'solid', colors: ['#39ff14'], glow: '#39ff14' }),
+  wall('wall_fire', 'Firewall', 300, 'rare', { style: 'gradient', colors: ['#ff3d00', '#ffb300'], glow: '#ff6d00' }),
+  wall('wall_ice', 'Ice Barrier', 300, 'rare', { style: 'gradient', colors: ['#e0f7ff', '#38bdf8'], glow: '#7dd3fc' }),
+  wall('wall_shadow', 'Shadow Gate', 500, 'epic', { style: 'gradient', colors: ['#64748b', '#0f172a'], glow: '#a855f7' }),
+  wall('wall_rainbow', 'Rainbow', 750, 'epic', { style: 'rainbow', colors: ['#ff3b3b', '#ff9f1c', '#ffe14d', '#3ddc84', '#3b82f6', '#a855f7'] }),
+  wall('wall_gold', 'Gold Bar', 1200, 'legendary', { style: 'gradient', colors: ['#fff7c2', '#f5b301', '#a16207'], glow: '#facc15' }),
+];
 
-/**
- * Helper to extract a solid color from a cosmetic preview (e.g., gradient string).
- */
-export function getCosmeticColor(itemId: string, fallback: string): string {
-  const item = COSMETICS.find(c => c.id === itemId);
-  if (!item) return fallback;
-  const match = item.preview.match(/#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})/);
-  return match ? match[0] : fallback;
+export const BOARDS: BoardItem[] = [
+  board('board_default', 'Classic', 0, 'common', {
+    followsAppTheme: true, frame: '', surface: '', cellA: '', cellB: '', goalTint: 0.16, edge: '',
+  }, true),
+  board('board_ocean', 'Deep Ocean', 400, 'rare', {
+    frame: '#08303f', surface: '#0b4257', cellA: '#13627c', cellB: '#105770', goalTint: 0.22, edge: '#5eead4',
+  }),
+  board('board_forest', 'Enchanted Forest', 400, 'rare', {
+    frame: '#1b2e1b', surface: '#22391f', cellA: '#35552c', cellB: '#2f4d27', goalTint: 0.22, edge: '#bef264',
+  }),
+  board('board_crimson', 'Crimson Arena', 400, 'rare', {
+    frame: '#2b1013', surface: '#3a151a', cellA: '#5a2128', cellB: '#4f1c23', goalTint: 0.22, edge: '#fda4af',
+  }),
+  board('board_sand', 'Desert Sand', 500, 'epic', {
+    frame: '#8a5a2b', surface: '#c08a4f', cellA: '#f1d29b', cellB: '#e8c487', goalTint: 0.25, edge: '#fff1c9',
+  }),
+  board('board_galaxy', 'Galaxy', 800, 'epic', {
+    frame: '#0b0a24', surface: '#15123a', cellA: '#2a2466', cellB: '#231e58', goalTint: 0.26, edge: '#c4b5fd',
+  }),
+  board('board_marble', 'Royal Marble', 1200, 'legendary', {
+    frame: '#3b2f1a', surface: '#d9d4c7', cellA: '#f8f6f0', cellB: '#ece8de', goalTint: 0.2, edge: '#d4af37',
+  }),
+];
+
+export const EMOTES: EmoteItem[] = [
+  emote('emote_smile', 'Smile', 0, 'common', '😊', true),
+  emote('emote_gg', 'GG', 50, 'common', '🤝'),
+  emote('emote_fire', 'Fire', 50, 'common', '🔥'),
+  emote('emote_heart', 'Heart', 50, 'common', '❤️'),
+  emote('emote_thumbs_up', 'Thumbs Up', 50, 'common', '👍'),
+  emote('emote_think', 'Thinking', 75, 'rare', '🤔'),
+  emote('emote_laugh', 'Laugh', 75, 'rare', '😂'),
+  emote('emote_cool', 'Cool', 75, 'rare', '😎'),
+  emote('emote_angry', 'Angry', 75, 'rare', '😡'),
+  emote('emote_mind_blown', 'Mind Blown', 100, 'rare', '🤯'),
+  emote('emote_ghost', 'Ghost', 150, 'epic', '👻'),
+  emote('emote_crown', 'Crown', 200, 'epic', '👑'),
+  emote('emote_diamond', 'Diamond', 250, 'legendary', '💎'),
+];
+
+const AVATAR_PRICES = [0, 0, 0, 0, 0, 0, 100, 100, 150, 150, 200, 200, 250, 250, 300, 300, 350, 350, 400, 400, 500];
+export const AVATARS: AvatarItem[] = AVATAR_PRICES.map((price, i) => ({
+  id: `avatar_${i + 1}`,
+  name: `Avatar ${i + 1}`,
+  type: 'avatar',
+  price,
+  rarity: price === 0 ? 'common' : price < 250 ? 'rare' : price < 400 ? 'epic' : 'legendary',
+  image: `./avatars/avatar_${i + 1}.png`,
+  free: price === 0,
+}));
+
+export const COSMETICS: AnyCosmetic[] = [...PAWNS, ...WALLS, ...BOARDS, ...EMOTES, ...AVATARS];
+
+export const RARITY_COLORS: Record<Rarity, string> = {
+  common: '#94a3b8',
+  rare: '#38bdf8',
+  epic: '#a855f7',
+  legendary: '#f59e0b',
+};
+
+// ------------------------------------------------------------
+// Lookups
+// ------------------------------------------------------------
+export function findCosmetic(id: string): AnyCosmetic | undefined {
+  return COSMETICS.find(c => c.id === id);
 }
 
-let cachedProfile: PlayerProfile | null = null;
-
-/**
- * Load the player profile from storage.
- */
-export function loadProfile(): PlayerProfile {
-  if (cachedProfile) return cachedProfile;
-
-  const raw = loadData(PROFILE_KEY);
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw) as PlayerProfile;
-      // Merge with defaults to handle new fields
-      cachedProfile = { ...DEFAULT_PROFILE, ...parsed };
-      return cachedProfile;
-    } catch (e) {
-      console.warn('Failed to parse saved profile:', e);
-    }
-  }
-
-  cachedProfile = { ...DEFAULT_PROFILE, createdAt: Date.now(), lastPlayedAt: Date.now() };
-  saveProfile(cachedProfile);
-  return cachedProfile;
+export function pawnSpec(id: string, fallbackId = 'pawn_blue'): PawnSpec {
+  return (PAWNS.find(p => p.id === id) ?? PAWNS.find(p => p.id === fallbackId)!).spec;
 }
 
-/**
- * Save the player profile to storage.
- */
-export function saveProfile(profile: PlayerProfile): void {
-  cachedProfile = profile;
-  saveData(PROFILE_KEY, JSON.stringify(profile));
+export function wallSpec(id: string): WallSpec {
+  return (WALLS.find(w => w.id === id) ?? WALLS[0]).spec;
 }
 
-/**
- * Update specific fields of the profile.
- */
-export function updateProfile(updates: Partial<PlayerProfile>): PlayerProfile {
-  const profile = loadProfile();
-  const updated = { ...profile, ...updates, lastPlayedAt: Date.now() };
-  saveProfile(updated);
-  return updated;
+export function boardSpec(id: string): BoardSpec {
+  return (BOARDS.find(b => b.id === id) ?? BOARDS[0]).spec;
 }
 
-/**
- * Add coins to the player's balance.
- */
-export function addCoins(amount: number): PlayerProfile {
-  const profile = loadProfile();
-  return updateProfile({ coins: profile.coins + amount });
+/** Avatar id meaning "use my CrazyGames profile picture". */
+export const CRAZYGAMES_AVATAR_ID = 'avatar_cg';
+
+/** Image for an avatar id, or the URL itself (CrazyGames pictures are shared as URLs). */
+export function avatarImage(id: string): string {
+  if (/^https:\/\//.test(id)) return id;
+  return (AVATARS.find(a => a.id === id) ?? AVATARS[0]).image;
 }
 
-/**
- * Attempt to purchase a cosmetic item.
- * Returns true if successful, false if insufficient funds or already owned.
- */
-export function purchaseCosmetic(itemId: string): { success: boolean; message: string } {
-  const profile = loadProfile();
-  const item = COSMETICS.find(c => c.id === itemId);
-
-  if (!item) {
-    return { success: false, message: 'Item not found' };
-  }
-
-  if (profile.unlockedCosmetics.includes(itemId)) {
-    return { success: false, message: 'Already owned' };
-  }
-
-  if (profile.coins < item.price) {
-    return { success: false, message: `Not enough coins (need ${item.price - profile.coins} more)` };
-  }
-
-  updateProfile({
-    coins: profile.coins - item.price,
-    unlockedCosmetics: [...profile.unlockedCosmetics, itemId],
-  });
-
-  return { success: true, message: 'Purchase successful!' };
+/** CSS background for a wall skin preview in the shop. */
+export function wallPreviewCss(spec: WallSpec, pawnColor: string): string {
+  if (spec.style === 'match') return pawnColor;
+  if (spec.colors.length === 1) return spec.colors[0];
+  return `linear-gradient(90deg, ${spec.colors.join(', ')})`;
 }
 
-/**
- * Equip a cosmetic item.
- */
-export function equipCosmetic(itemId: string): boolean {
-  const profile = loadProfile();
-  const item = COSMETICS.find(c => c.id === itemId);
-
-  if (!item || !profile.unlockedCosmetics.includes(itemId)) {
-    return false;
-  }
-
-  switch (item.type) {
-    case 'pawn':
-      updateProfile({ equippedPawnSkin: itemId });
-      break;
-    case 'wall':
-      updateProfile({ equippedWallSkin: itemId });
-      break;
-    case 'board':
-      updateProfile({ equippedBoardTheme: itemId });
-      break;
-    case 'avatar':
-      updateProfile({ equippedAvatar: itemId });
-      break;
-    default:
-      break;
-  }
-
-  return true;
-}
-
-/**
- * Record a game result and award coins.
- */
-export function recordGameResult(won: boolean, movesPlayed: number, wallsPlaced: number, coinsEarned: number): PlayerProfile {
-  const profile = loadProfile();
-
-  const updates: Partial<PlayerProfile> = {
-    gamesPlayed: profile.gamesPlayed + 1,
-    gamesWon: won ? profile.gamesWon + 1 : profile.gamesWon,
-    gamesLost: won ? profile.gamesLost : profile.gamesLost + 1,
-    winStreak: won ? profile.winStreak + 1 : 0,
-    bestWinStreak: won
-      ? Math.max(profile.bestWinStreak, profile.winStreak + 1)
-      : profile.bestWinStreak,
-    coins: profile.coins + coinsEarned,
-    totalMovesPlayed: profile.totalMovesPlayed + movesPlayed,
-    totalWallsPlaced: profile.totalWallsPlaced + wallsPlaced,
-  };
-
-  return updateProfile(updates);
-}
-
-/**
- * Get cosmetics list with unlock status from profile.
- */
-export function getCosmeticsWithStatus(): CosmeticItem[] {
-  const profile = loadProfile();
-  return COSMETICS.map(item => ({
-    ...item,
-    unlocked: profile.unlockedCosmetics.includes(item.id),
-  }));
+/** CSS background for a pawn preview in the shop / HUD. */
+export function pawnPreviewCss(spec: PawnSpec): string {
+  const mid = spec.accent ? `${spec.color} 45%, ${spec.accent} 75%` : `${spec.color} 45%`;
+  return `radial-gradient(circle at 32% 28%, #ffffff 0%, ${mid}, ${spec.shade} 100%)`;
 }
