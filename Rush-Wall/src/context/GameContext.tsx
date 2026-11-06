@@ -23,7 +23,7 @@ import { loadProfile, updateProfile, recordMatch, addCoins, linkCrazyGamesAccoun
 import { findRival, rivalAfter, type LadderRival } from '../progression/ladder';
 import { soundManager } from '../audio/soundManager';
 import * as sdk from '../sdk/crazygames';
-import type { MatchInfo, GameChannel } from '../sdk/multiplayer';
+import type { MatchInfo, GameChannel, GameChannelHandlers } from '../sdk/multiplayer';
 import { MATCHES_PER_BREAK_AD, REWARDED_COIN_MULTIPLIER } from '../config/balance';
 
 export type Screen = 'home' | 'game' | 'ladder' | 'shop' | 'profile' | 'leaderboard' | 'online' | 'howToPlay' | 'privacy';
@@ -48,7 +48,14 @@ interface AppState {
   chatDisabled: boolean;
   /** Room code from an invite link, consumed by the online screen. */
   pendingRoomCode: string | null;
+  /** Started from the CrazyGames party UI: the online screen opens a private room right away. */
+  instantRoom: boolean;
+  /** Rematch status on the online results screen. */
+  rematch: RematchState;
 }
+
+export interface RematchState { mine: boolean; theirs: boolean; opponentLeft: boolean }
+const NO_REMATCH: RematchState = { mine: false, theirs: false, opponentLeft: false };
 
 type Action =
   | { type: 'READY'; profile: PlayerProfile; chatDisabled: boolean; pendingRoomCode: string | null }
@@ -62,7 +69,10 @@ type Action =
   | { type: 'MATCH_CLOSED' }
   | { type: 'EMOTE'; emote: Emote }
   | { type: 'CHAT_DISABLED'; value: boolean }
-  | { type: 'ROOM_CODE_USED' };
+  | { type: 'ROOM_CODE_USED' }
+  | { type: 'JOIN_ROOM'; code: string }
+  | { type: 'INSTANT_ROOM'; value: boolean }
+  | { type: 'REMATCH'; rematch: Partial<RematchState> };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -73,7 +83,7 @@ function reducer(state: AppState, action: Action): AppState {
     case 'PROFILE':
       return { ...state, profile: action.profile };
     case 'MATCH_STARTED':
-      return { ...state, screen: 'game', match: action.match, localPlayerId: action.localPlayerId, rewards: null, bonusClaimed: false, emote: null };
+      return { ...state, screen: 'game', match: action.match, localPlayerId: action.localPlayerId, rewards: null, bonusClaimed: false, emote: null, rematch: NO_REMATCH };
     case 'GAME_STATE':
       return { ...state, gameState: action.gameState };
     case 'TIMER':
@@ -90,6 +100,12 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, chatDisabled: action.value };
     case 'ROOM_CODE_USED':
       return { ...state, pendingRoomCode: null };
+    case 'JOIN_ROOM':
+      return { ...state, pendingRoomCode: action.code, screen: 'online', previousScreen: state.screen };
+    case 'INSTANT_ROOM':
+      return { ...state, instantRoom: action.value };
+    case 'REMATCH':
+      return { ...state, rematch: { ...state.rematch, ...action.rematch } };
   }
 }
 
@@ -114,6 +130,9 @@ interface GameContextValue {
   consumeRoomCode(): void;
   /** Open the CrazyGames log-in popup (guests only). */
   loginWithCrazyGames(): Promise<void>;
+  /** Online results: ask the same opponent for another match in the same room. */
+  requestRematch(): void;
+  consumeInstantRoom(): void;
 }
 
 const GameContext = createContext<GameContextValue | null>(null);
@@ -162,6 +181,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     emote: null,
     chatDisabled: false,
     pendingRoomCode: null,
+    instantRoom: false,
+    rematch: NO_REMATCH,
   });
 
   const gmRef = useRef<GameManager | null>(null);
@@ -169,6 +190,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const matchRef = useRef<ActiveMatch | null>(null);
   const localIdRef = useRef<PlayerId>(0);
   const finishedMatchesRef = useRef(0);
+  const onlineRef = useRef<{ info: MatchInfo; mine: boolean; theirs: boolean; started: boolean } | null>(null);
   const chatDisabledRef = useRef(false);
   useEffect(() => { chatDisabledRef.current = state.chatDisabled; }, [state.chatDisabled]);
 
@@ -203,8 +225,22 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       if (cancelled) return;
       dispatch({ type: 'READY', profile, chatDisabled: platform.disableChat, pendingRoomCode: roomCode });
 
+      // A friend accepted an invite while the game is open: go to their room
+      // (unless an online match is already being played).
+      sdk.onJoinRoomRequest(code => {
+        const gm = gmRef.current;
+        if (matchRef.current?.kind === 'online' && gm?.getState().phase === GamePhase.Playing) return;
+        closeMatchRef.current();
+        dispatch({ type: 'MATCH_CLOSED' });
+        dispatch({ type: 'JOIN_ROOM', code });
+      });
+
       if (roomCode) dispatch({ type: 'SCREEN', screen: 'online' });
-      else if (!profile.tutorialDone) startTutorialRef.current();
+      else if (sdk.isInstantMultiplayer()) {
+        // Party leader from the CrazyGames UI: straight into a joinable private room.
+        dispatch({ type: 'INSTANT_ROOM', value: true });
+        dispatch({ type: 'SCREEN', screen: 'online' });
+      } else if (!profile.tutorialDone) startTutorialRef.current();
     })();
 
     // Browsers only allow audio after a user gesture.
@@ -221,14 +257,20 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   // ----------------------------------------------------------
   // Match lifecycle
   // ----------------------------------------------------------
-  const closeMatch = useCallback(() => {
+  /** End the current match. Online, this also leaves the room unless a rematch keeps it. */
+  const closeMatch = useCallback((keepChannel = false) => {
     gmRef.current?.destroy();
     gmRef.current = null;
-    channelRef.current?.close();
-    channelRef.current = null;
+    if (!keepChannel && channelRef.current) {
+      channelRef.current.leave();
+      channelRef.current = null;
+      onlineRef.current = null;
+      sdk.reportLeftRoom();
+    }
     matchRef.current = null;
     sdk.gameplayStop();
   }, []);
+  const closeMatchRef = useRef(closeMatch);
 
   const handleGameOver = useCallback((gm: GameManager, winner: PlayerId, reason: GameEndReason) => {
     const gs = gm.getState();
@@ -242,10 +284,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     if (match.kind === 'online') {
       if (reason === GameEndReason.Timeout && winner !== localId) channelRef.current?.sendTimeout();
       void import('../sdk/leaderboard').then(m => m.recordOnlineResult(won)).catch(e => console.warn('[Leaderboard]', e));
-      // Keep the channel a moment so final messages arrive, then close it.
-      const channel = channelRef.current;
-      channelRef.current = null;
-      setTimeout(() => channel?.close(), 1500);
+      // The channel stays open so both players can rematch in the same room.
     }
 
     const rewards = recordMatch({
@@ -265,8 +304,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: 'RESULTS', rewards });
   }, []);
 
-  const launch = useCallback((options: { match: ActiveMatch; mode: GameMode; players: [PlayerSetup, PlayerSetup]; localPlayers: PlayerId[]; localPlayerId: PlayerId; timer?: boolean }) => {
-    closeMatch();
+  const launch = useCallback((options: { match: ActiveMatch; mode: GameMode; players: [PlayerSetup, PlayerSetup]; localPlayers: PlayerId[]; localPlayerId: PlayerId; timer?: boolean; keepChannel?: boolean }) => {
+    closeMatch(options.keepChannel);
     const gm = new GameManager({ mode: options.mode, players: options.players, localPlayers: options.localPlayers, timerEnabled: options.timer ?? true });
     gmRef.current = gm;
     matchRef.current = options.match;
@@ -334,7 +373,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     });
   }, [launch]);
 
-  const startOnlineMatch = useCallback((info: MatchInfo) => {
+  const startOnlineMatch = useCallback((info: MatchInfo, existing?: GameChannel) => {
     const p = loadProfile();
     const localId: PlayerId = info.isHost ? 0 : 1;
     const remoteId = opponentOf(localId);
@@ -342,27 +381,70 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     const them: PlayerSetup = { name: info.opponent.name || 'Opponent', ...distinctLooks(myLook(p), info.opponent) };
     const players: [PlayerSetup, PlayerSetup] = info.isHost ? [me, them] : [them, me];
 
-    launch({ match: { kind: 'online', online: info }, mode: GameMode.Online, players, localPlayers: [localId], localPlayerId: localId });
+    launch({ match: { kind: 'online', online: info }, mode: GameMode.Online, players, localPlayers: [localId], localPlayerId: localId, keepChannel: !!existing });
+    onlineRef.current = { info, mine: false, theirs: false, started: false };
+    // The room is full now: CrazyGames hides its invite button for this player.
+    sdk.reportFullRoom(info.gameId);
 
+    const handlersFor = (gm: GameManager): GameChannelHandlers => ({
+      onMove: move => {
+        if (!gm.makeMove(remoteId, move)) console.warn('[Online] rejected remote move (out of sync?)', move);
+      },
+      onEmote: emoji => {
+        if (!chatDisabledRef.current) dispatch({ type: 'EMOTE', emote: { playerId: remoteId, emoji, at: Date.now() } });
+      },
+      onResign: () => gm.forceEnd(localId, GameEndReason.Resignation),
+      onTimeout: () => gm.forceEnd(localId, GameEndReason.Timeout),
+      onRematch: () => {
+        const online = onlineRef.current;
+        if (!online) return;
+        online.theirs = true;
+        dispatch({ type: 'REMATCH', rematch: { theirs: true } });
+        if (online.mine) beginRematchRef.current();
+      },
+      onGone: () => {
+        gm.forceEnd(localId, GameEndReason.Disconnect);
+        dispatch({ type: 'REMATCH', rematch: { opponentLeft: true } });
+        sdk.reportLeftRoom();
+      },
+    });
+
+    const gm = gmRef.current!;
+    if (existing) {
+      existing.nextRound();
+      existing.setHandlers(handlersFor(gm));
+      channelRef.current = existing;
+      return;
+    }
     void import('../sdk/multiplayer').then(({ GameChannel }) => {
-      const gm = gmRef.current;
-      if (!gm) return;
-      const channel = new GameChannel(info.gameId, {
-        onMove: move => {
-          if (!gm.makeMove(remoteId, move)) console.warn('[Online] rejected remote move (out of sync?)', move);
-        },
-        onEmote: emoji => {
-          if (!chatDisabledRef.current) dispatch({ type: 'EMOTE', emote: { playerId: remoteId, emoji, at: Date.now() } });
-        },
-        onResign: () => gm.forceEnd(localId, GameEndReason.Resignation),
-        onTimeout: () => gm.forceEnd(localId, GameEndReason.Timeout),
-        onGone: () => gm.forceEnd(localId, GameEndReason.Disconnect),
-      });
+      if (gmRef.current !== gm) return; // the player already left
+      const channel = new GameChannel(info.gameId, handlersFor(gm));
       channelRef.current = channel;
       void channel.connect();
       void import('../sdk/leaderboard').then(m => m.syncLeaderboardEntry()).catch(() => undefined);
     });
   }, [launch]);
+
+  /** Both players asked for a rematch: same room, and the other player moves first this time. */
+  const beginRematch = useCallback(() => {
+    const online = onlineRef.current;
+    const channel = channelRef.current;
+    if (!online || !channel || online.started || channel.isGone) return;
+    online.started = true;
+    startOnlineMatch({ ...online.info, isHost: !online.info.isHost }, channel);
+  }, [startOnlineMatch]);
+  const beginRematchRef = useRef(beginRematch);
+  useEffect(() => { beginRematchRef.current = beginRematch; }, [beginRematch]);
+
+  const requestRematch = useCallback(() => {
+    const online = onlineRef.current;
+    if (!online || online.mine) return;
+    online.mine = true;
+    soundManager.play('click');
+    channelRef.current?.sendRematch();
+    dispatch({ type: 'REMATCH', rematch: { mine: true } });
+    if (online.theirs) beginRematch();
+  }, [beginRematch]);
 
   // ----------------------------------------------------------
   // In-match actions
@@ -401,7 +483,6 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const quitMatch = useCallback(() => {
     const gm = gmRef.current;
     if (gm && gm.getState().phase === GamePhase.Playing && matchRef.current?.kind === 'online') {
-      channelRef.current?.leave();
       void import('../sdk/leaderboard').then(m => m.recordOnlineResult(false)).catch(() => undefined);
     }
     closeMatch();
@@ -461,6 +542,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const consumeRoomCode = useCallback(() => dispatch({ type: 'ROOM_CODE_USED' }), []);
+  const consumeInstantRoom = useCallback(() => dispatch({ type: 'INSTANT_ROOM', value: false }), []);
 
   const loginWithCrazyGames = useCallback(async () => {
     const user = await sdk.showCrazyLogin();
@@ -470,7 +552,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const value: GameContextValue = {
     state, navigate, startTutorial, startAIMatch, startLocalMatch, startOnlineMatch,
     makeMove, resign, sendEmote, continueAfterMatch, quitMatch, claimRewardedBonus,
-    setProfile, updateSettings, consumeRoomCode, loginWithCrazyGames,
+    setProfile, updateSettings, consumeRoomCode, loginWithCrazyGames, requestRematch, consumeInstantRoom,
   };
 
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
