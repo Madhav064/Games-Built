@@ -213,24 +213,48 @@ export interface GameChannelHandlers {
   onResign(): void;
   /** Opponent says they ran out of time. */
   onTimeout(): void;
+  /** Opponent pressed Rematch on the results screen. */
+  onRematch(): void;
   /** Opponent left on purpose or stopped responding. */
   onGone(): void;
 }
 
+/**
+ * One connection between two players. It outlives a single match:
+ * after a match both players can press Rematch and play again in the
+ * same room ("rooms kept across rounds"). Each match is a numbered round.
+ */
 export class GameChannel {
   private channel: RealtimeChannel | null = null;
   private heartbeat: ReturnType<typeof setInterval> | null = null;
   private lastSeen = Date.now();
+  private round = 1;
   private sentSeq = 0;
   private receivedSeq = 0;
   private gone = false;
   private readonly onPageHide = () => this.leave();
   private readonly gameId: string;
-  private readonly handlers: GameChannelHandlers;
+  private handlers: GameChannelHandlers;
 
   constructor(gameId: string, handlers: GameChannelHandlers) {
     this.gameId = gameId;
     this.handlers = handlers;
+  }
+
+  get isGone(): boolean {
+    return this.gone;
+  }
+
+  /** Point events at the current match (a rematch creates a new match). */
+  setHandlers(handlers: GameChannelHandlers): void {
+    this.handlers = handlers;
+  }
+
+  /** Start the next round: move numbering restarts and old-round messages are ignored. */
+  nextRound(): void {
+    this.round++;
+    this.sentSeq = 0;
+    this.receivedSeq = 0;
   }
 
   async connect(): Promise<void> {
@@ -239,17 +263,19 @@ export class GameChannel {
     this.channel = channel;
 
     const seen = () => { this.lastSeen = Date.now(); };
+    const current = (payload: unknown) => (payload as { round?: number }).round === this.round;
     channel
       .on('broadcast', { event: 'move' }, ({ payload }) => {
         seen();
         const { seq, move } = payload as { seq: number; move: Move };
-        if (seq <= this.receivedSeq) return; // duplicate
+        if (!current(payload) || seq <= this.receivedSeq) return; // other round or duplicate
         this.receivedSeq = seq;
         this.handlers.onMove(move);
       })
       .on('broadcast', { event: 'emote' }, ({ payload }) => { seen(); this.handlers.onEmote((payload as { emoji: string }).emoji); })
-      .on('broadcast', { event: 'resign' }, () => { seen(); this.handlers.onResign(); })
-      .on('broadcast', { event: 'timeout' }, () => { seen(); this.handlers.onTimeout(); })
+      .on('broadcast', { event: 'resign' }, ({ payload }) => { seen(); if (current(payload)) this.handlers.onResign(); })
+      .on('broadcast', { event: 'timeout' }, ({ payload }) => { seen(); if (current(payload)) this.handlers.onTimeout(); })
+      .on('broadcast', { event: 'rematch' }, ({ payload }) => { seen(); if (current(payload)) this.handlers.onRematch(); })
       .on('broadcast', { event: 'hb' }, seen)
       .on('broadcast', { event: 'leave' }, () => this.markGone())
       .subscribe(status => {
@@ -260,11 +286,13 @@ export class GameChannel {
   }
 
   sendMove(move: Move): void {
-    this.send('move', { seq: ++this.sentSeq, move });
+    this.send('move', { round: this.round, seq: ++this.sentSeq, move });
   }
   sendEmote(emoji: string): void { this.send('emote', { emoji }); }
-  sendResign(): void { this.send('resign', {}); }
-  sendTimeout(): void { this.send('timeout', {}); }
+  sendResign(): void { this.send('resign', { round: this.round }); }
+  sendTimeout(): void { this.send('timeout', { round: this.round }); }
+  /** Ask for a rematch of the round that just ended. */
+  sendRematch(): void { this.send('rematch', { round: this.round }); }
 
   /** Tell the opponent we're leaving, then disconnect. */
   leave(): void {
