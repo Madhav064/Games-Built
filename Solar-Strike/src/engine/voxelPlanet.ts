@@ -226,6 +226,58 @@ export class VoxelPlanet {
     return { removed, coreRemoved };
   }
 
+  /** Add heat (0..~2) with smooth falloff. Also leaves a permanent scorch mark. */
+  addHeat(cx: number, cy: number, cz: number, radius: number, amount: number): void {
+    const r = radius;
+    const x0 = Math.max(1, Math.floor(cx - r)), x1 = Math.min(GRID - 2, Math.ceil(cx + r));
+    const y0 = Math.max(1, Math.floor(cy - r)), y1 = Math.min(GRID - 2, Math.ceil(cy + r));
+    const z0 = Math.max(1, Math.floor(cz - r)), z1 = Math.min(GRID - 2, Math.ceil(cz + r));
+    const h = this.heat, s = this.scorch, f = this.field;
+    for (let z = z0; z <= z1; z++) {
+      for (let y = y0; y <= y1; y++) {
+        let i = x0 + y * GRID + z * NXY;
+        for (let x = x0; x <= x1; x++, i++) {
+          if (f[i] < -2) continue; // only near or inside the surface
+          const dx = x - cx, dy = y - cy, dz = z - cz;
+          const d2 = (dx * dx + dy * dy + dz * dz) / (r * r);
+          if (d2 >= 1) continue;
+          const k = (1 - d2) * (1 - d2) * amount;
+          h[i] = Math.min(2.5, h[i] + k);
+          const sc = Math.min(255, Math.round(k * 180));
+          if (sc > s[i]) s[i] = sc;
+        }
+      }
+    }
+    this.markRegion(x0, y0, z0, x1, y1, z1, 'heat');
+  }
+
+  /** Heat a thin expanding ring on the surface (shockwave fire front). */
+  heatRing(cx: number, cy: number, cz: number, ringRadius: number, width: number, amount: number): void {
+    const r = ringRadius + width;
+    const x0 = Math.max(1, Math.floor(cx - r)), x1 = Math.min(GRID - 2, Math.ceil(cx + r));
+    const y0 = Math.max(1, Math.floor(cy - r)), y1 = Math.min(GRID - 2, Math.ceil(cy + r));
+    const z0 = Math.max(1, Math.floor(cz - r)), z1 = Math.min(GRID - 2, Math.ceil(cz + r));
+    const h = this.heat, s = this.scorch, f = this.field;
+    for (let z = z0; z <= z1; z++) {
+      for (let y = y0; y <= y1; y++) {
+        let i = x0 + y * GRID + z * NXY;
+        for (let x = x0; x <= x1; x++, i++) {
+          const fv = f[i];
+          if (fv < -1.5 || fv > 2.5) continue; // surface shell only
+          const dx = x - cx, dy = y - cy, dz = z - cz;
+          const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+          const band = Math.abs(dist - ringRadius) / width;
+          if (band >= 1) continue;
+          const k = (1 - band) * amount;
+          h[i] = Math.min(2.5, h[i] + k);
+          const sc = Math.min(255, Math.round(k * 140));
+          if (sc > s[i]) s[i] = sc;
+        }
+      }
+    }
+    this.markRegion(x0, y0, z0, x1, y1, z1, 'heat');
+  }
+
   private markRegion(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, kind: 'geom' | 'heat'): void {
     const a = (v: number) => Math.max(0, Math.min(NC - 1, Math.floor((v - 2) / CHUNK)));
     const b = (v: number) => Math.max(0, Math.min(NC - 1, Math.floor((v + 2) / CHUNK)));
