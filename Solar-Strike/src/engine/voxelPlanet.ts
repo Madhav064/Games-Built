@@ -349,4 +349,81 @@ export class VoxelPlanet {
     return max;
   }
 
+  /** Re-mesh one chunk. */
+  private rebuildChunk(ch: Chunk): void {
+    ch.geomDirty = false;
+    ch.attrDirty = false;
+    const x0 = ch.cx * CHUNK, y0 = ch.cy * CHUNK, z0 = ch.cz * CHUNK;
+    const data = surfaceNets(this.field, GRID, GRID, GRID, x0, y0, z0, x0 + CHUNK, y0 + CHUNK, z0 + CHUNK);
+    if (!data) {
+      if (ch.mesh) {
+        this.group.remove(ch.mesh);
+        ch.mesh.geometry.dispose();
+        ch.mesh = null;
+      }
+      ch.sampleIndex = null;
+      ch.baseGlow = null;
+      return;
+    }
+    const n = data.vertexCount;
+    const pos = data.positions;
+    const colors = new Float32Array(n * 3);
+    const glow = new Float32Array(n);
+    const surf = new Float32Array(n);
+    const scorch = new Float32Array(n);
+    const baseGlow = new Float32Array(n);
+    const o = shadeOut;
+    for (let v = 0; v < n; v++) {
+      const gx = pos[v * 3], gy = pos[v * 3 + 1], gz = pos[v * 3 + 2];
+      const si = data.sampleIndex[v];
+      this.shade(gx - CENTER, gy - CENTER, gz - CENTER, o);
+      colors[v * 3] = o.r; colors[v * 3 + 1] = o.g; colors[v * 3 + 2] = o.b;
+      surf[v] = o.surf;
+      baseGlow[v] = o.glow;
+      glow[v] = o.glow + this.heat[si] * 1.1;
+      scorch[v] = this.scorch[si] / 255;
+      pos[v * 3] = (gx - CENTER) * VOXEL;
+      pos[v * 3 + 1] = (gy - CENTER) * VOXEL;
+      pos[v * 3 + 2] = (gz - CENTER) * VOXEL;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('normal', new THREE.BufferAttribute(data.normals, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geo.setAttribute('aGlow', new THREE.BufferAttribute(glow, 1));
+    geo.setAttribute('aSurf', new THREE.BufferAttribute(surf, 1));
+    geo.setAttribute('aScorch', new THREE.BufferAttribute(scorch, 1));
+    geo.setIndex(new THREE.BufferAttribute(data.indices, 1));
+    geo.computeBoundingSphere();
+    if (ch.mesh) {
+      ch.mesh.geometry.dispose();
+      ch.mesh.geometry = geo;
+    } else {
+      ch.mesh = new THREE.Mesh(geo, this.material);
+      ch.mesh.matrixAutoUpdate = false;
+      this.group.add(ch.mesh);
+    }
+    ch.sampleIndex = data.sampleIndex;
+    ch.baseGlow = baseGlow;
+  }
+
+  /** Update heat glow and scorch marks without re-meshing. */
+  private refreshAttributes(ch: Chunk): void {
+    ch.attrDirty = false;
+    if (!ch.mesh || !ch.sampleIndex || !ch.baseGlow) return;
+    const geo = ch.mesh.geometry;
+    const glow = geo.getAttribute('aGlow') as THREE.BufferAttribute;
+    const sc = geo.getAttribute('aScorch') as THREE.BufferAttribute;
+    const g = glow.array as Float32Array;
+    const s = sc.array as Float32Array;
+    const n = ch.sampleIndex.length;
+    for (let v = 0; v < n; v++) {
+      const si = ch.sampleIndex[v];
+      g[v] = ch.baseGlow[v] + this.heat[si] * 1.1;
+      s[v] = this.scorch[si] / 255;
+    }
+    glow.needsUpdate = true;
+    sc.needsUpdate = true;
+  }
+
 }
