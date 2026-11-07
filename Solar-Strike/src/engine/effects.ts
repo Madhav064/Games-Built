@@ -286,3 +286,40 @@ export class Debris {
   }
 }
 
+// ------------------------------------------------------------
+// Flashes (bright expanding sprites)
+// ------------------------------------------------------------
+interface Flash { sprite: THREE.Sprite; t: number; dur: number; size: number }
+
+export class Flashes {
+  readonly group = new THREE.Group();
+  private readonly pool: Flash[] = [];
+  private readonly tex = radialTexture('rgba(255,255,255,1)', 'rgba(255,255,255,0)', 128);
+
+  spawn(pos: THREE.Vector3, size: number, color: THREE.ColorRepresentation, dur = 0.5): void {
+    let f = this.pool.find(p => p.t >= p.dur);
+    if (!f) {
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: this.tex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true,
+      }));
+      f = { sprite, t: 0, dur: 0, size: 0 };
+      this.pool.push(f);
+      this.group.add(sprite);
+    }
+    f.sprite.position.copy(pos);
+    (f.sprite.material as THREE.SpriteMaterial).color.set(color);
+    f.t = 0; f.dur = dur; f.size = size;
+    f.sprite.visible = true;
+  }
+
+  update(dt: number): void {
+    for (const f of this.pool) {
+      if (f.t >= f.dur) { f.sprite.visible = false; continue; }
+      f.t += dt;
+      const k = Math.min(1, f.t / f.dur);
+      f.sprite.scale.setScalar(f.size * Flashes.sizeScale * (0.4 + 0.6 * Math.sqrt(k)));
+      (f.sprite.material as THREE.SpriteMaterial).opacity = (1 - k) * (1 - k) * Flashes.strength;
+    }
+  }
+}
+
