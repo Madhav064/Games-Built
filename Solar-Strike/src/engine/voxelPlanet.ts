@@ -187,4 +187,62 @@ export class VoxelPlanet {
     return null;
   }
 
+  // ----------------------------------------------------------
+  // Damage
+  // ----------------------------------------------------------
+  /** Remove a (slightly ragged) sphere of material. Radius is in voxels. */
+  carve(cx: number, cy: number, cz: number, radius: number, roughness = 0.35): CarveResult {
+    const f = this.field;
+    const r = radius + 1;
+    const x0 = Math.max(1, Math.floor(cx - r)), x1 = Math.min(GRID - 2, Math.ceil(cx + r));
+    const y0 = Math.max(1, Math.floor(cy - r)), y1 = Math.min(GRID - 2, Math.ceil(cy + r));
+    const z0 = Math.max(1, Math.floor(cz - r)), z1 = Math.min(GRID - 2, Math.ceil(cz + r));
+    let removed = 0, coreRemoved = 0;
+    const noiseScale = 0.35;
+    for (let z = z0; z <= z1; z++) {
+      for (let y = y0; y <= y1; y++) {
+        let i = x0 + y * GRID + z * NXY;
+        for (let x = x0; x <= x1; x++, i++) {
+          const dx = x - cx, dy = y - cy, dz = z - cz;
+          const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+          if (dist > r + 1) continue;
+          let d = dist - radius;
+          if (roughness > 0) d += this.rough.noise(x * noiseScale, y * noiseScale, z * noiseScale) * roughness * Math.min(radius, 4);
+          const old = f[i];
+          if (d < old) {
+            f[i] = d;
+            if (old > 0 && d <= 0) {
+              removed++;
+              const rx = x - CENTER, ry = y - CENTER, rz = z - CENTER;
+              if (rx * rx + ry * ry + rz * rz < CORE_R * CORE_R) coreRemoved++;
+            }
+          }
+        }
+      }
+    }
+    this.solid -= removed;
+    this.core -= coreRemoved;
+    this.markRegion(x0, y0, z0, x1, y1, z1, 'geom');
+    return { removed, coreRemoved };
+  }
+
+  private markRegion(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, kind: 'geom' | 'heat'): void {
+    const a = (v: number) => Math.max(0, Math.min(NC - 1, Math.floor((v - 2) / CHUNK)));
+    const b = (v: number) => Math.max(0, Math.min(NC - 1, Math.floor((v + 2) / CHUNK)));
+    for (let cz = a(z0); cz <= b(z1); cz++)
+      for (let cy = a(y0); cy <= b(y1); cy++)
+        for (let cx = a(x0); cx <= b(x1); cx++) {
+          const ch = this.chunks[cx + cy * NC + cz * NC * NC];
+          if (kind === 'geom') ch.geomDirty = true;
+          else {
+            ch.attrDirty = true;
+            ch.hot = true;
+            this.hotChunks.add(ch);
+          }
+        }
+  }
+
+  get integrity(): number { return this.solid / this.solidInitial; }
+  get coreIntegrity(): number { return this.core / this.coreInitial; }
+
 }
