@@ -220,4 +220,58 @@ export class PlanetSurface {
     }
   }
 
+  /** The surface colours as an sRGB texture (sampled per pixel in the planet shader). */
+  createTexture(): THREE.DataTexture {
+    const data = new Uint8Array(LUT_W * LUT_H * 4);
+    for (let i = 0; i < LUT_W * LUT_H; i++) {
+      data[i * 4] = Math.max(0, Math.min(255, this.color[i * 3] * 255));
+      data[i * 4 + 1] = Math.max(0, Math.min(255, this.color[i * 3 + 1] * 255));
+      data[i * 4 + 2] = Math.max(0, Math.min(255, this.color[i * 3 + 2] * 255));
+      data[i * 4 + 3] = 255;
+    }
+    const tex = new THREE.DataTexture(data, LUT_W, LUT_H, THREE.RGBAFormat);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.magFilter = THREE.LinearFilter;
+    tex.minFilter = THREE.LinearFilter;
+    tex.generateMipmaps = false;
+    tex.needsUpdate = true;
+    return tex;
+  }
+
+  private cell(dx: number, dy: number, dz: number): { fi: number; fj: number } {
+    const len = Math.hypot(dx, dy, dz) || 1;
+    const lat = Math.asin(Math.max(-1, Math.min(1, dy / len)));
+    const lon = Math.atan2(dz, dx);
+    return {
+      fi: ((lon + Math.PI) / (Math.PI * 2)) * LUT_W - 0.5,
+      fj: ((lat + Math.PI / 2) / Math.PI) * LUT_H - 0.5,
+    };
+  }
+
+  /** Bilinear height offset (voxels) in direction (dx,dy,dz). */
+  heightAt(dx: number, dy: number, dz: number): number {
+    const { fi, fj } = this.cell(dx, dy, dz);
+    const i0 = Math.floor(fi), j0 = Math.floor(fj);
+    const tx = fi - i0, ty = fj - j0;
+    const ia = ((i0 % LUT_W) + LUT_W) % LUT_W, ib = (ia + 1) % LUT_W;
+    const ja = Math.max(0, Math.min(LUT_H - 1, j0)), jb = Math.max(0, Math.min(LUT_H - 1, j0 + 1));
+    const h = this.height;
+    const a = h[ja * LUT_W + ia] * (1 - tx) + h[ja * LUT_W + ib] * tx;
+    const b = h[jb * LUT_W + ia] * (1 - tx) + h[jb * LUT_W + ib] * tx;
+    return a * (1 - ty) + b * ty;
+  }
+
+  /** Nearest-cell surface colour and land flag. */
+  sample(dx: number, dy: number, dz: number, out: Float32Array): boolean {
+    const { fi, fj } = this.cell(dx, dy, dz);
+    const i = ((Math.round(fi) % LUT_W) + LUT_W) % LUT_W;
+    const j = Math.max(0, Math.min(LUT_H - 1, Math.round(fj)));
+    const idx = j * LUT_W + i;
+    out[0] = this.color[idx * 3];
+    out[1] = this.color[idx * 3 + 1];
+    out[2] = this.color[idx * 3 + 2];
+    return this.land[idx] === 1;
+  }
 }
