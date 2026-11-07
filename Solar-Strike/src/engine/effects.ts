@@ -366,3 +366,47 @@ export class Rings {
   }
 }
 
+// ------------------------------------------------------------
+// Beam (core + soft glow cylinder) between two world points
+// ------------------------------------------------------------
+export class Beam {
+  readonly group = new THREE.Group();
+  private readonly core: THREE.Mesh;
+  private readonly glow: THREE.Mesh;
+  private readonly up = new THREE.Vector3(0, 1, 0);
+  private readonly dir = new THREE.Vector3();
+  private flicker = 0;
+
+  constructor(color: THREE.ColorRepresentation, width: number) {
+    const geo = new THREE.CylinderGeometry(1, 1, 1, 12, 1, true);
+    geo.translate(0, 0.5, 0);
+    this.core = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+      color: 0xffffff, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    this.glow = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+      color, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    this.core.scale.set(width * 0.35, 1, width * 0.35);
+    this.glow.scale.set(width, 1, width);
+    this.group.add(this.glow, this.core);
+    this.group.visible = false;
+  }
+
+  setColor(color: THREE.ColorRepresentation): void {
+    (this.glow.material as THREE.MeshBasicMaterial).color.set(color);
+  }
+
+  show(from: THREE.Vector3, to: THREE.Vector3, width: number, dt: number): void {
+    this.dir.subVectors(to, from);
+    const len = this.dir.length();
+    this.group.position.copy(from);
+    this.group.quaternion.setFromUnitVectors(this.up, this.dir.normalize());
+    this.flicker += dt * 40;
+    const w = width * (0.85 + Math.sin(this.flicker) * 0.15);
+    this.core.scale.set(w * 0.32, len, w * 0.32);
+    this.glow.scale.set(w, len, w);
+    this.group.visible = true;
+  }
+
+  hide(): void { this.group.visible = false; }
+}
