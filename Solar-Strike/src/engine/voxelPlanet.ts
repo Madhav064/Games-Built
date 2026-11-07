@@ -426,4 +426,57 @@ export class VoxelPlanet {
     sc.needsUpdate = true;
   }
 
+  /**
+   * Shading for a point at offset (dx,dy,dz) from the centre (voxels):
+   * interior layer colour (linear), base glow, and how much original surface shows.
+   */
+  shade(dx: number, dy: number, dz: number, out: ShadeOut): ShadeOut {
+    const r = Math.hypot(dx, dy, dz);
+    const surfR = RADIUS_VOX + this.surface.heightAt(dx, dy, dz);
+    const depth = surfR - r;
+    const L = this.layer;
+    const t = r / RADIUS_VOX;
+    let a = L.crust, b = L.mantle, u = 0, glow = 0;
+    if (t > 0.78) { a = L.crust; b = L.mantle; u = (0.86 - t) / 0.08; glow = Math.max(0, (0.84 - t) * 3); }
+    else if (t > 0.5) { a = L.mantle; b = L.outer; u = (0.62 - t) / 0.12; glow = 0.2 + (0.78 - t) * 1.6; }
+    else if (t > 0.27) { a = L.outer; b = L.inner; u = (0.34 - t) / 0.07; glow = 0.8 + (0.5 - t) * 2; }
+    else { a = L.inner; b = L.inner; glow = 1.6; }
+    u = Math.min(1, Math.max(0, u));
+    out.r = a[0] + (b[0] - a[0]) * u;
+    out.g = a[1] + (b[1] - a[1]) * u;
+    out.b = a[2] + (b[2] - a[2]) * u;
+    // The original surface shows on top, fading out over ~1.3 voxels of depth.
+    const s = depth < 2.2 ? 1 - Math.min(1, Math.max(0, (depth - 0.9) / 1.3)) : 0;
+    out.surf = s;
+    out.glow = glow * (1 - s);
+    return out;
+  }
+
+  /** Approximate colour where a carve happened (for debris tint). */
+  debrisColor(gx: number, gy: number, gz: number, out: THREE.Color): THREE.Color {
+    const dx = gx - CENTER, dy = gy - CENTER, dz = gz - CENTER;
+    const r = Math.hypot(dx, dy, dz);
+    const surfR = RADIUS_VOX + this.surface.heightAt(dx, dy, dz);
+    if (surfR - r < 2) {
+      this.surface.sample(dx, dy, dz, tmpColor);
+      return out.setRGB(tmpColor[0], tmpColor[1], tmpColor[2], THREE.SRGBColorSpace);
+    }
+    const t = r / RADIUS_VOX;
+    const L = this.layer;
+    const c = t > 0.78 ? L.crust : t > 0.5 ? L.mantle : t > 0.27 ? L.outer : L.inner;
+    return out.setRGB(c[0], c[1], c[2]);
+  }
+
+  dispose(): void {
+    for (const ch of this.chunks) {
+      if (ch.mesh) {
+        ch.mesh.geometry.dispose();
+        this.group.remove(ch.mesh);
+        ch.mesh = null;
+      }
+    }
+    this.material.dispose();
+    this.surfaceTexture.dispose();
+    this.group.removeFromParent();
+  }
 }
