@@ -82,3 +82,42 @@ export function surfaceNets(
   }
   if (pos.length === 0) return null;
 
+  const idx: number[] = [];
+  const cell = (x: number, y: number, z: number) => {
+    if (x < cx0 || y < cy0 || z < cz0 || x >= cx1 || y >= cy1 || z >= cz1) return -1;
+    return cellVert[(x - cx0) + (y - cy0) * sx + (z - cz0) * sx * sy];
+  };
+  const quad = (a: number, b: number, c: number, d: number, flip: boolean) => {
+    if (a < 0 || b < 0 || c < 0 || d < 0) return;
+    if (flip) idx.push(a, c, b, a, d, c);
+    else idx.push(a, b, c, a, c, d);
+  };
+
+  const ex1 = Math.min(x1, nx), ey1 = Math.min(y1, ny), ez1 = Math.min(z1, nz);
+  for (let z = z0; z < ez1; z++) {
+    for (let y = y0; y < ey1; y++) {
+      for (let x = x0; x < ex1; x++) {
+        const i = x + y * nx + z * nxy;
+        const s = field[i] > 0;
+        if (x + 1 < nx && y > 0 && z > 0 && (field[i + 1] > 0) !== s) {
+          quad(cell(x, y - 1, z - 1), cell(x, y, z - 1), cell(x, y, z), cell(x, y - 1, z), !s);
+        }
+        if (y + 1 < ny && x > 0 && z > 0 && (field[i + nx] > 0) !== s) {
+          quad(cell(x - 1, y, z - 1), cell(x - 1, y, z), cell(x, y, z), cell(x, y, z - 1), !s);
+        }
+        if (z + 1 < nz && x > 0 && y > 0 && (field[i + nxy] > 0) !== s) {
+          quad(cell(x - 1, y - 1, z), cell(x, y - 1, z), cell(x, y, z), cell(x - 1, y, z), !s);
+        }
+      }
+    }
+  }
+  if (idx.length === 0) return null;
+
+  return {
+    positions: new Float32Array(pos),
+    normals: new Float32Array(nrm),
+    sampleIndex: new Int32Array(sidx),
+    indices: new Uint32Array(idx),
+    vertexCount: pos.length / 3,
+  };
+}
