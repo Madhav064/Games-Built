@@ -144,3 +144,145 @@ export class Particles {
   }
 }
 
+// ------------------------------------------------------------
+// Rock debris (instanced, lit, glows while hot)
+// ------------------------------------------------------------
+export class Debris {
+  readonly mesh: THREE.InstancedMesh;
+  private readonly max: number;
+  private readonly pos: Float32Array;
+  private readonly vel: Float32Array;
+  private readonly rot: Float32Array;
+  private readonly spin: Float32Array;
+  private readonly scale: Float32Array;
+  private readonly life: Float32Array;
+  private readonly heat: Float32Array;
+  private readonly glowAttr: THREE.InstancedBufferAttribute;
+  private next = 0;
+  private readonly m = new THREE.Matrix4();
+  private readonly q = new THREE.Quaternion();
+  private readonly e = new THREE.Euler();
+  private readonly v = new THREE.Vector3();
+  private readonly s = new THREE.Vector3();
+  /** Returns true if a world point is inside solid planet. */
+  collide: ((x: number, y: number, z: number) => boolean) | null = null;
+  gravity = 2.2;
+  /** Points that pull debris in and swallow it (black holes). */
+  attractors: { x: number; y: number; z: number; strength: number }[] = [];
+  /** Camera position: debris that drifts too close fades out instead of filling the screen. */
+  camera: THREE.Vector3 | null = null;
+
+  constructor(max = 1400) {
+    this.max = max;
+    const geo = new THREE.IcosahedronGeometry(1, 0);
+    // Squash vertices a little so rocks look less uniform.
+    const p = geo.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < p.count; i++) p.setXYZ(i, p.getX(i) * (0.8 + (i % 3) * 0.15), p.getY(i) * 0.85, p.getZ(i));
+    geo.computeVertexNormals();
+    this.glowAttr = new THREE.InstancedBufferAttribute(new Float32Array(max), 1).setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute('iGlow', this.glowAttr);
+    const mat = new THREE.MeshStandardMaterial({ roughness: 0.95, flatShading: true });
+    mat.onBeforeCompile = shader => {
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute float iGlow;\nvarying float vGlow;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGlow = iGlow;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying float vGlow;')
+        .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+          totalEmissiveRadiance += mix(vec3(1.0,0.25,0.03), vec3(1.0,0.8,0.4), clamp(vGlow-0.6,0.0,1.0)) * vGlow * 0.9;`);
+    };
+    this.mesh = new THREE.InstancedMesh(geo, mat, max);
+    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.mesh.frustumCulled = false;
+    this.pos = new Float32Array(max * 3);
+    this.vel = new Float32Array(max * 3);
+    this.rot = new Float32Array(max * 3);
+    this.spin = new Float32Array(max * 3);
+    this.scale = new Float32Array(max);
+    this.life = new Float32Array(max);
+    this.heat = new Float32Array(max);
+    const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+    const white = new THREE.Color(1, 1, 1);
+    for (let i = 0; i < max; i++) {
+      this.mesh.setMatrixAt(i, zero);
+      this.mesh.setColorAt(i, white);
+    }
+  }
+
+  spawn(pos: THREE.Vector3, vel: THREE.Vector3, size: number, color: THREE.Color, heat: number, life = 7): void {
+    const i = this.next;
+    this.next = (this.next + 1) % this.max;
+    const i3 = i * 3;
+    this.pos[i3] = pos.x; this.pos[i3 + 1] = pos.y; this.pos[i3 + 2] = pos.z;
+    this.vel[i3] = vel.x; this.vel[i3 + 1] = vel.y; this.vel[i3 + 2] = vel.z;
+    this.rot[i3] = Math.random() * 6; this.rot[i3 + 1] = Math.random() * 6; this.rot[i3 + 2] = Math.random() * 6;
+    this.spin[i3] = (Math.random() - 0.5) * 8; this.spin[i3 + 1] = (Math.random() - 0.5) * 8; this.spin[i3 + 2] = (Math.random() - 0.5) * 8;
+    this.scale[i] = size;
+    this.life[i] = life * (0.7 + Math.random() * 0.6);
+    this.heat[i] = heat;
+    this.mesh.setColorAt(i, color);
+    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+  }
+
+  update(dt: number): void {
+    const g = this.gravity;
+    for (let i = 0; i < this.max; i++) {
+      let l = this.life[i];
+      if (l <= 0) continue;
+      l -= dt;
+      const i3 = i * 3;
+      let px = this.pos[i3], py = this.pos[i3 + 1], pz = this.pos[i3 + 2];
+      let vx = this.vel[i3], vy = this.vel[i3 + 1], vz = this.vel[i3 + 2];
+      const r2 = px * px + py * py + pz * pz + 0.05;
+      const s = -g * dt / (r2 * Math.sqrt(r2));
+      vx += px * s; vy += py * s; vz += pz * s;
+      let pulled = false;
+      for (const a of this.attractors) {
+        const ax = a.x - px, ay = a.y - py, az = a.z - pz;
+        const d2 = ax * ax + ay * ay + az * az;
+        if (d2 < 0.012) { l = 0; break; } // swallowed
+        if (d2 < 2.5) pulled = true;
+        const f = Math.min(30, a.strength / (d2 + 0.05)) * dt / Math.sqrt(d2);
+        vx += ax * f; vy += ay * f; vz += az * f;
+      }
+      px += vx * dt; py += vy * dt; pz += vz * dt;
+      // Landing: falling debris that re-enters the planet comes to rest and fades.
+      if (!pulled && this.collide && (vx * px + vy * py + vz * pz) < 0 && this.collide(px, py, pz)) {
+        vx *= 0.1; vy *= 0.1; vz *= 0.1;
+        px -= this.vel[i3] * dt * 0.9; py -= this.vel[i3 + 1] * dt * 0.9; pz -= this.vel[i3 + 2] * dt * 0.9;
+        l = Math.min(l, 0.6);
+      }
+      if (r2 > 900) l = 0; // left the scene
+      if (this.camera) {
+        const cx = px - this.camera.x, cy = py - this.camera.y, cz = pz - this.camera.z;
+        if (cx * cx + cy * cy + cz * cz < 2.2) l = Math.min(l, 0.25);
+      }
+      this.pos[i3] = px; this.pos[i3 + 1] = py; this.pos[i3 + 2] = pz;
+      this.vel[i3] = vx; this.vel[i3 + 1] = vy; this.vel[i3 + 2] = vz;
+      this.rot[i3] += this.spin[i3] * dt; this.rot[i3 + 1] += this.spin[i3 + 1] * dt; this.rot[i3 + 2] += this.spin[i3 + 2] * dt;
+      this.heat[i] *= Math.exp(-dt * 0.9);
+      this.life[i] = l;
+      const fade = l <= 0 ? 0 : Math.min(1, l / 0.6);
+      const sc = this.scale[i] * fade;
+      this.e.set(this.rot[i3], this.rot[i3 + 1], this.rot[i3 + 2]);
+      this.q.setFromEuler(this.e);
+      this.v.set(px, py, pz);
+      this.s.set(sc, sc, sc);
+      this.m.compose(this.v, this.q, this.s);
+      this.mesh.setMatrixAt(i, this.m);
+      this.glowAttr.setX(i, this.heat[i]);
+    }
+    this.mesh.instanceMatrix.needsUpdate = true;
+    this.glowAttr.needsUpdate = true;
+  }
+
+  clear(): void {
+    const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+    for (let i = 0; i < this.max; i++) {
+      this.life[i] = 0;
+      this.mesh.setMatrixAt(i, zero);
+    }
+    this.mesh.instanceMatrix.needsUpdate = true;
+  }
+}
+
