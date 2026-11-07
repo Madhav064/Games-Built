@@ -297,4 +297,56 @@ export class VoxelPlanet {
   get integrity(): number { return this.solid / this.solidInitial; }
   get coreIntegrity(): number { return this.core / this.coreInitial; }
 
+  // ----------------------------------------------------------
+  // Per-frame update
+  // ----------------------------------------------------------
+  update(dt: number, budgetMs = 7): void {
+    // Heat decays a few times per second.
+    this.heatTimer += dt;
+    if (this.heatTimer > 1 / 12) {
+      const k = Math.exp(-this.heatTimer * 0.45);
+      this.heatTimer = 0;
+      for (const ch of this.hotChunks) {
+        const max = this.decayBlock(ch, k);
+        ch.attrDirty = true;
+        if (max < 0.01) {
+          ch.hot = false;
+          this.hotChunks.delete(ch);
+        }
+      }
+    }
+
+    const start = performance.now();
+    for (const ch of this.chunks) {
+      if (ch.geomDirty) {
+        this.rebuildChunk(ch);
+        if (performance.now() - start > budgetMs) break;
+      }
+    }
+    for (const ch of this.chunks) {
+      if (ch.attrDirty && !ch.geomDirty) this.refreshAttributes(ch);
+    }
+  }
+
+  private decayBlock(ch: Chunk, k: number): number {
+    const h = this.heat;
+    // Ice thaws slower than rock cools, leaving time to shatter frozen ground.
+    const kCold = Math.pow(k, 0.35);
+    let max = 0;
+    const x0 = ch.cx * CHUNK, y0 = ch.cy * CHUNK, z0 = ch.cz * CHUNK;
+    for (let z = z0; z < z0 + CHUNK; z++)
+      for (let y = y0; y < y0 + CHUNK; y++) {
+        let i = x0 + y * GRID + z * NXY;
+        for (let x = 0; x < CHUNK; x++, i++) {
+          const v = h[i];
+          if (v === 0) continue;
+          const nv = v * (v < 0 ? kCold : k);
+          h[i] = Math.abs(nv) < 0.005 ? 0 : nv;
+          const absV = Math.abs(nv);
+          if (absV > max) max = absV;
+        }
+      }
+    return max;
+  }
+
 }
