@@ -118,3 +118,89 @@ export function createAtmosphere(radius: number, color: number, strength: number
   return new THREE.Mesh(new THREE.SphereGeometry(radius, 64, 48), mat);
 }
 
+const CW = 768, CH = 384;
+
+/** A cloud shell drawn on a canvas so explosions can blow holes in it. */
+export class CloudLayer {
+  readonly mesh: THREE.Mesh;
+  private readonly ctx: CanvasRenderingContext2D;
+  private readonly tex: THREE.CanvasTexture;
+  private readonly baseOpacity: number;
+
+  constructor(radius: number, def: CloudDef, seed: number) {
+    const canvas = document.createElement('canvas');
+    canvas.width = CW; canvas.height = CH;
+    this.ctx = canvas.getContext('2d')!;
+    const img = this.ctx.createImageData(CW, CH);
+    const noise = new Simplex3(seed + 77);
+    const col = new THREE.Color(def.color);
+    for (let y = 0; y < CH; y++) {
+      const theta = ((y + 0.5) / CH) * Math.PI;
+      for (let x = 0; x < CW; x++) {
+        const phi = ((x + 0.5) / CW) * Math.PI * 2;
+        // Same convention as THREE.SphereGeometry.
+        const dx = -Math.cos(phi) * Math.sin(theta), dy = Math.cos(theta), dz = Math.sin(phi) * Math.sin(theta);
+        // Swirl: warp the lookup with low-frequency noise.
+        const w = noise.noise(dx * 1.5, dy * 1.5, dz * 1.5) * 0.6;
+        let n = noise.fbm(dx * 2.6 + w, dy * 5.2 + w, dz * 2.6 - w, 5) * 0.5 + 0.5;
+        n = (n - (1 - def.coverage)) / def.coverage;
+        const a = Math.max(0, Math.min(1, n * 1.8));
+        const i = (y * CW + x) * 4;
+        img.data[i] = col.r * 255; img.data[i + 1] = col.g * 255; img.data[i + 2] = col.b * 255;
+        img.data[i + 3] = a * 255;
+      }
+    }
+    this.ctx.putImageData(img, 0, 0);
+    this.tex = new THREE.CanvasTexture(canvas);
+    this.tex.colorSpace = THREE.SRGBColorSpace;
+    this.baseOpacity = def.opacity;
+    const mat = new THREE.MeshStandardMaterial({
+      map: this.tex, transparent: true, opacity: def.opacity, depthWrite: false, roughness: 1,
+    });
+    this.mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 64, 48), mat);
+  }
+
+  /** Clear a soft hole around a world-space point. `angle` is in radians. */
+  punch(worldPoint: THREE.Vector3, angle: number): void {
+    const local = this.mesh.worldToLocal(worldPoint.clone()).normalize();
+    const theta = Math.acos(Math.max(-1, Math.min(1, local.y)));
+    let phi = Math.atan2(local.z, -local.x);
+    if (phi < 0) phi += Math.PI * 2;
+    const px = (phi / (Math.PI * 2)) * CW;
+    const py = (theta / Math.PI) * CH;
+    const ry = (angle / Math.PI) * CH;
+    const rx = ry / Math.max(0.15, Math.sin(theta)); // stretch near the poles
+    const g = this.ctx;
+    g.save();
+    g.globalCompositeOperation = 'destination-out';
+    for (const ox of [-CW, 0, CW]) {
+      g.save();
+      g.translate(px + ox, py);
+      g.scale(rx / ry, 1);
+      const grad = g.createRadialGradient(0, 0, 0, 0, 0, ry);
+      grad.addColorStop(0, 'rgba(0,0,0,1)');
+      grad.addColorStop(0.6, 'rgba(0,0,0,0.8)');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = grad;
+      g.beginPath();
+      g.arc(0, 0, ry, 0, Math.PI * 2);
+      g.fill();
+      g.restore();
+    }
+    g.restore();
+    this.tex.needsUpdate = true;
+  }
+
+  /** Fade clouds as the planet loses its atmosphere. */
+  setHealth(h: number): void {
+    (this.mesh.material as THREE.MeshStandardMaterial).opacity = this.baseOpacity * Math.max(0, Math.min(1, h));
+  }
+
+  dispose(): void {
+    this.mesh.geometry.dispose();
+    (this.mesh.material as THREE.Material).dispose();
+    this.tex.dispose();
+    this.mesh.removeFromParent();
+  }
+}
+
