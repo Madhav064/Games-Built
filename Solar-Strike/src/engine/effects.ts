@@ -323,3 +323,46 @@ export class Flashes {
   }
 }
 
+// ------------------------------------------------------------
+// Shockwave rings that hug the planet surface
+// ------------------------------------------------------------
+interface Ring { mesh: THREE.Mesh; t: number; dur: number; size: number }
+
+export class Rings {
+  private readonly pool: Ring[] = [];
+  private readonly geo = new THREE.RingGeometry(0.82, 1, 64);
+
+  /** `parent` should be the planet group so the ring rotates with the surface. */
+  spawn(parent: THREE.Object3D, localPos: THREE.Vector3, normal: THREE.Vector3, size: number, color: THREE.ColorRepresentation, dur = 1.6): void {
+    let r = this.pool.find(p => p.t >= p.dur);
+    if (!r) {
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+      });
+      r = { mesh: new THREE.Mesh(this.geo, mat), t: 0, dur: 0, size: 0 };
+      this.pool.push(r);
+    }
+    parent.add(r.mesh);
+    r.mesh.position.copy(localPos).addScaledVector(normal, 0.03);
+    r.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+    (r.mesh.material as THREE.MeshBasicMaterial).color.set(color);
+    r.t = 0; r.dur = dur; r.size = size;
+    r.mesh.visible = true;
+  }
+
+  update(dt: number): void {
+    for (const r of this.pool) {
+      if (r.t >= r.dur) { r.mesh.visible = false; continue; }
+      r.t += dt;
+      const k = Math.min(1, r.t / r.dur);
+      const s = r.size * (0.05 + 0.95 * (1 - Math.pow(1 - k, 2.5)));
+      r.mesh.scale.setScalar(s);
+      (r.mesh.material as THREE.MeshBasicMaterial).opacity = (1 - k) * 0.55;
+    }
+  }
+
+  clear(): void {
+    for (const r of this.pool) { r.t = r.dur; r.mesh.visible = false; r.mesh.removeFromParent(); }
+  }
+}
+
