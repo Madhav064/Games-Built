@@ -86,3 +86,35 @@ export function createSun(direction: THREE.Vector3): THREE.Group {
   return g;
 }
 
+export function createAtmosphere(radius: number, color: number, strength: number, sunDir: THREE.Vector3): THREE.Mesh {
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uColor: { value: new THREE.Color(color) },
+      uStrength: { value: strength },
+      uSun: { value: sunDir.clone().normalize() },
+    },
+    vertexShader: `
+      varying vec3 vNormal; varying vec3 vView;
+      void main() {
+        vec4 wp = modelMatrix * vec4(position, 1.0);
+        vNormal = normalize(mat3(modelMatrix) * normal);
+        vView = normalize(cameraPosition - wp.xyz);
+        gl_Position = projectionMatrix * viewMatrix * wp;
+      }`,
+    fragmentShader: `
+      uniform vec3 uColor; uniform float uStrength; uniform vec3 uSun;
+      varying vec3 vNormal; varying vec3 vView;
+      void main() {
+        float rim = 1.0 - max(dot(vNormal, vView), 0.0);
+        float glow = pow(rim, 3.0);
+        float lit = clamp(dot(vNormal, uSun) * 0.8 + 0.35, 0.0, 1.0);
+        gl_FragColor = vec4(uColor * glow * lit * uStrength * 1.6, glow * lit * uStrength);
+      }`,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.FrontSide,
+  });
+  return new THREE.Mesh(new THREE.SphereGeometry(radius, 64, 48), mat);
+}
+
