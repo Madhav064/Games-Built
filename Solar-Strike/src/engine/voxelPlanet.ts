@@ -116,4 +116,75 @@ export class VoxelPlanet {
     this.core = this.coreInitial = core;
   }
 
+  // ----------------------------------------------------------
+  // Coordinate helpers
+  // ----------------------------------------------------------
+  /** World position -> grid coordinates (writes into `out`). */
+  worldToGrid(world: THREE.Vector3, out: THREE.Vector3): THREE.Vector3 {
+    this.group.updateMatrixWorld();
+    this.invMatrix.copy(this.group.matrixWorld).invert();
+    out.copy(world).applyMatrix4(this.invMatrix).divideScalar(VOXEL).addScalar(CENTER);
+    return out;
+  }
+
+  /** Grid coordinates -> world position. */
+  gridToWorld(grid: THREE.Vector3, out: THREE.Vector3): THREE.Vector3 {
+    this.group.updateMatrixWorld();
+    out.copy(grid).subScalar(CENTER).multiplyScalar(VOXEL).applyMatrix4(this.group.matrixWorld);
+    return out;
+  }
+
+  /** Trilinear field value at grid coordinates. */
+  sample(gx: number, gy: number, gz: number): number {
+    if (gx < 0 || gy < 0 || gz < 0 || gx >= GRID - 1 || gy >= GRID - 1 || gz >= GRID - 1) return -1;
+    const x0 = Math.floor(gx), y0 = Math.floor(gy), z0 = Math.floor(gz);
+    const tx = gx - x0, ty = gy - y0, tz = gz - z0;
+    const i = x0 + y0 * GRID + z0 * NXY;
+    const f = this.field;
+    const c00 = f[i] * (1 - tx) + f[i + 1] * tx;
+    const c10 = f[i + GRID] * (1 - tx) + f[i + GRID + 1] * tx;
+    const c01 = f[i + NXY] * (1 - tx) + f[i + NXY + 1] * tx;
+    const c11 = f[i + NXY + GRID] * (1 - tx) + f[i + NXY + GRID + 1] * tx;
+    return (c00 * (1 - ty) + c10 * ty) * (1 - tz) + (c01 * (1 - ty) + c11 * ty) * tz;
+  }
+
+  isSolidWorld(world: THREE.Vector3, tmp: THREE.Vector3): boolean {
+    this.worldToGrid(world, tmp);
+    return this.sample(tmp.x, tmp.y, tmp.z) > 0;
+  }
+
+  /** March a world-space ray into the field. Returns the hit in grid coords or null. */
+  raycast(origin: THREE.Vector3, dir: THREE.Vector3, out: THREE.Vector3): THREE.Vector3 | null {
+    const o = this.worldToGrid(origin, new THREE.Vector3());
+    const end = this.worldToGrid(origin.clone().add(dir), new THREE.Vector3());
+    const d = end.sub(o).normalize();
+    // Bounding sphere around the planet.
+    const bound = RADIUS_VOX + 6;
+    const oc = o.clone().subScalar(CENTER);
+    const b = oc.dot(d), c = oc.lengthSq() - bound * bound;
+    const disc = b * b - c;
+    if (disc < 0) return null;
+    const sq = Math.sqrt(disc);
+    let t = Math.max(0, -b - sq);
+    const tFar = -b + sq;
+    if (tFar < 0) return null;
+    const step = 0.45;
+    let prevT = t;
+    while (t < tFar) {
+      const v = this.sample(o.x + d.x * t, o.y + d.y * t, o.z + d.z * t);
+      if (v > 0) {
+        let lo = prevT, hi = t;
+        for (let k = 0; k < 8; k++) {
+          const mid = (lo + hi) / 2;
+          if (this.sample(o.x + d.x * mid, o.y + d.y * mid, o.z + d.z * mid) > 0) hi = mid;
+          else lo = mid;
+        }
+        return out.set(o.x + d.x * hi, o.y + d.y * hi, o.z + d.z * hi);
+      }
+      prevT = t;
+      t += step;
+    }
+    return null;
+  }
+
 }
