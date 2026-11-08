@@ -188,4 +188,90 @@ export class Game {
     this.resize();
   }
 
+  // ----------------------------------------------------------
+  // Planet lifecycle
+  // ----------------------------------------------------------
+  loadPlanet(def: PlanetDef): void {
+    this.clearPlanet();
+    this.planetDef = def;
+    this.destroyed = false;
+    this.debris.gravity = 2.2;
+    this.rig.resetZoom();
+    const planet = new VoxelPlanet(def);
+    this.planet = planet;
+    this.scene.add(planet.group);
+    planet.group.rotation.y = Math.random() * Math.PI * 2;
+    if (def.clouds) {
+      this.clouds = new CloudLayer(WORLD_RADIUS * 1.035, def.clouds, def.seed);
+      planet.group.add(this.clouds.mesh);
+    }
+    if (def.atmosphere) {
+      this.atmoStrength = def.atmosphere.strength;
+      this.atmosphere = createAtmosphere(WORLD_RADIUS * 1.07, def.atmosphere.color, def.atmosphere.strength, SUN_DIR);
+      this.scene.add(this.atmosphere);
+    }
+    if (def.rings) {
+      // In the scene, not the spinning planet group: a tilted child would wobble as the planet turns.
+      this.planetRings = createRings(def.rings.innerRadius, def.rings.outerRadius, def.rings.color, def.rings.opacity, def.rings.tilt);
+      // Tip toward the default camera too, so the rings read as an open ellipse, not a line.
+      this.planetRings.rotation.x = 0.38;
+      this.scene.add(this.planetRings);
+    }
+    this.population = new Population(planet, SUN_DIR);
+    this.population.setViewportHeight(window.innerHeight);
+    planet.group.add(this.population.points);
+    this.lastIntegrity = 1;
+    this.lastKilledShare = 0;
+    this.xpEarned = 0;
+    this.shotsThisPlanet = 0;
+    this.planetGen++;
+    this.events.onPlanetLoaded?.(def);
+    this.emitStats();
+  }
+
+  resetPlanet(): void {
+    this.loadPlanet(this.planetDef);
+  }
+
+  private clearPlanet(): void {
+    this.stopFiring();
+    for (const p of this.projectiles) p.mesh.removeFromParent();
+    this.projectiles = [];
+    this.shockwaves = [];
+    for (const s of this.singularities) s.group.removeFromParent();
+    this.singularities = [];
+    this.lavaPools = [];
+    this.lances = [];
+    this.debris.attractors = [];
+    this.particles.clear();
+    this.debris.clear();
+    this.rings.clear();
+    this.population?.dispose();
+    this.population = null;
+    this.clouds?.dispose();
+    this.clouds = null;
+    if (this.planetRings) {
+      this.planetRings.geometry.dispose();
+      (this.planetRings.material as THREE.Material).dispose();
+      this.planetRings.removeFromParent();
+      this.planetRings = null;
+    }
+    if (this.atmosphere) {
+      this.atmosphere.geometry.dispose();
+      (this.atmosphere.material as THREE.Material).dispose();
+      this.atmosphere.removeFromParent();
+      this.atmosphere = null;
+    }
+    this.shatter?.dispose();
+    this.shatter = null;
+    this.planet?.dispose();
+    this.planet = null;
+  }
+
+  selectWeapon(id: string): void {
+    this.stopFiring();
+    this.weapon = weaponById(id);
+    if (this.weapon.beam) this.beam.setColor(this.weapon.beam.color);
+  }
+
 }
