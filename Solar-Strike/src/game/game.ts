@@ -605,4 +605,98 @@ export class Game {
     }
   }
 
+  private spawnSingularity(pos: THREE.Vector3, gridPos: THREE.Vector3): void {
+    const grp = new THREE.Group();
+    grp.position.copy(pos);
+    const core = new THREE.Mesh(
+      new THREE.SphereGeometry(0.35, 24, 24),
+      new THREE.MeshBasicMaterial({ color: 0x000000 }),
+    );
+    const diskGeo = new THREE.RingGeometry(0.35, 1.15, 36);
+    const diskMat = new THREE.MeshBasicMaterial({
+      color: 0xbe4dff, transparent: true, opacity: 0.85, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+    });
+    const disk = new THREE.Mesh(diskGeo, diskMat);
+    disk.rotation.x = Math.PI / 3;
+    grp.add(core, disk);
+    this.scene.add(grp);
+
+    this.singularities.push({
+      group: grp,
+      pos,
+      gridPos,
+      age: 0,
+      duration: 5.5,
+      carveRadius: 3.5,
+      tickTimer: 0,
+    });
+    sfx.blackHoleRumble();
+    this.rig.shake(0.35);
+  }
+
+  private updateSingularities(dt: number): void {
+    const planet = this.planet;
+    for (let i = this.singularities.length - 1; i >= 0; i--) {
+      const s = this.singularities[i];
+      // Ride along with the spinning planet so the visual stays on the hole it is eating.
+      if (planet && !this.destroyed) {
+        planet.gridToWorld(s.gridPos, s.pos);
+        s.group.position.copy(s.pos);
+      }
+      s.age += dt;
+      s.tickTimer -= dt;
+      s.group.children[1].rotation.z += dt * 6;
+      for (let k = 0; k < 2; k++) {
+        const a = Math.random() * Math.PI * 2;
+        const dist = 0.5 + Math.random() * 0.9;
+        const px = s.pos.x + Math.cos(a) * dist;
+        const py = s.pos.y + (Math.random() - 0.5) * 0.3;
+        const pz = s.pos.z + Math.sin(a) * dist;
+        this.particles.spawn({
+          x: px, y: py, z: pz,
+          vx: (s.pos.x - px) * 2.2 - Math.sin(a) * 0.8,
+          vy: (s.pos.y - py) * 2.2,
+          vz: (s.pos.z - pz) * 2.2 + Math.cos(a) * 0.8,
+          r: 0.8, g: 0.3, b: 1.0,
+          size: 0.05 + Math.random() * 0.04,
+          life: 0.35, drag: 0.5,
+        });
+      }
+      if (s.tickTimer <= 0 && planet && !this.destroyed) {
+        s.tickTimer = 0.12;
+        s.carveRadius = Math.min(13, s.carveRadius + 0.3);
+        planet.carve(s.gridPos.x, s.gridPos.y, s.gridPos.z, s.carveRadius, 0.4);
+        planet.addHeat(s.gridPos.x, s.gridPos.y, s.gridPos.z, s.carveRadius * 1.3, 0.3);
+        this.population?.blast(s.gridPos.x, s.gridPos.y, s.gridPos.z, s.carveRadius * 1.4);
+        // Tear rock off the surrounding ground and drag it in.
+        for (let k = 0; k < 3; k++) {
+          const off = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5)
+            .normalize().multiplyScalar(s.carveRadius * (1.2 + Math.random()));
+          const sp = this.surfacePoint(off.add(s.gridPos));
+          if (!sp) continue;
+          planet.debrisColor(sp.x, sp.y, sp.z, this.tmpColor);
+          const w = planet.gridToWorld(sp, new THREE.Vector3());
+          const v = w.clone().normalize().multiplyScalar(0.4).addScaledVector(s.pos.clone().sub(w).normalize(), 0.3);
+          this.debris.spawn(w, v, VOXEL * (0.3 + Math.random() * 0.7), this.tmpColor, 0.3, 4);
+        }
+        this.rig.shake(0.012);
+      }
+      if (s.age >= s.duration) {
+        sfx.singularityCollapse();
+        this.flashes.spawn(s.pos, 8.5, 0xffffff, 0.7);
+        this.flashes.spawn(s.pos, 14, 0xb040ff, 1.2);
+        const norm = s.pos.clone().normalize();
+        this.rings.spawn(this.scene, s.pos, norm, 24, 0xc050ff, 2.2);
+        if (planet && !this.destroyed) {
+          planet.carve(s.gridPos.x, s.gridPos.y, s.gridPos.z, 15, 0.4);
+          planet.addHeat(s.gridPos.x, s.gridPos.y, s.gridPos.z, 22, 1.8);
+        }
+        this.rig.shake(0.9);
+        s.group.removeFromParent();
+        this.singularities.splice(i, 1);
+      }
+    }
+    this.debris.attractors = this.singularities.map(s => ({ x: s.pos.x, y: s.pos.y, z: s.pos.z, strength: 1.2 }));
+  }
+
 }
