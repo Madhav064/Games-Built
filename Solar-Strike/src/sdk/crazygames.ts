@@ -145,3 +145,20 @@ export const requestBreakAd = (): Promise<boolean> => requestAd('midgame');
 /** Opt-in rewarded ad. Resolves true only when the ad was watched to the end. */
 export const requestRewardedAd = (): Promise<boolean> => requestAd('rewarded');
 
+/** Progress is tied to the player's CrazyGames account; falls back to localStorage. */
+export function saveData(key: string, value: string): void {
+  const full = STORAGE_PREFIX + key;
+  const s = active();
+  if (s && safely('data.setItem', () => { s.data.setItem(full, value); return true; }, false)) return;
+  safely('localStorage.setItem', () => localStorage.setItem(full, value), undefined);
+}
+
+export function loadData(key: string): string | null {
+  const full = STORAGE_PREFIX + key;
+  const s = active();
+  if (s) {
+    const value = safely('data.getItem', () => s.data.getItem(full), null);
+    if (value !== null) return value;
+  }
+  return safely('localStorage.getItem', () => localStorage.getItem(full), null);
+}
