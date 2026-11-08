@@ -699,4 +699,79 @@ export class Game {
     this.debris.attractors = this.singularities.map(s => ({ x: s.pos.x, y: s.pos.y, z: s.pos.z, strength: 1.2 }));
   }
 
+  /** Explosion at grid point g. Frozen ground shatters into a much bigger crater. */
+  private impact(g: THREE.Vector3, s: ImpactSpec, proj?: ProjectileSpec): void {
+    const planet = this.planet;
+    if (!planet) return;
+    const frozen = planet.coldAt(g.x, g.y, g.z, Math.max(2, s.crater * 0.6)) < -0.4;
+    const crater = frozen ? s.crater * 1.7 : s.crater;
+    const res = planet.carve(g.x, g.y, g.z, crater);
+    planet.addHeat(g.x, g.y, g.z, crater * s.heatRadius, s.heat);
+    this.population?.blast(g.x, g.y, g.z, crater * 1.2);
+
+    const world = planet.gridToWorld(g, new THREE.Vector3());
+    const normal = world.clone().normalize();
+    const local = g.clone().subScalar(CENTER).multiplyScalar(VOXEL);
+    const localNormal = local.clone().normalize();
+
+    this.impactLight.position.copy(world).addScaledVector(normal, 0.45);
+    const lightCol = proj?.isKinetic ? 0x60e8ff : s.boom > 0.6 ? 0xffdfb0 : 0xff7722;
+    this.impactLight.color.set(lightCol);
+    this.impactLight.intensity = Math.min(10, 2 + s.boom * 8);
+
+    this.flashes.spawn(world.clone().addScaledVector(normal, 0.05), s.flash, 0xffe0b0, 0.35 + s.boom * 0.5);
+    this.flashes.spawn(world, s.flash * 0.6, 0xff6a20, 0.8 + s.boom);
+    if (s.shockwave > 0) {
+      this.rings.spawn(planet.group, local, localNormal, s.shockwave * VOXEL * 1.1, s.shockKill ? 0xfff0a0 : 0xffc070, 1.4 + s.boom);
+      this.shockwaves.push({
+        cx: g.x, cy: g.y, cz: g.z, maxR: s.shockwave, t: 0, dur: 1.2 + s.boom * 1.2, tick: 0,
+        heat: s.shockHeat ?? 0.16, kill: !!s.shockKill,
+      });
+    }
+
+    // Fire burst (hemisphere around the surface normal)
+    for (let k = 0; k < s.fire; k++) {
+      const v = this.randomHemisphere(normal, 0.85);
+      const sp = (0.2 + Math.random() * 0.9) * (0.4 + s.boom * 1.4);
+      const hot = Math.random();
+      this.particles.spawn({
+        x: world.x, y: world.y, z: world.z,
+        vx: v.x * sp, vy: v.y * sp, vz: v.z * sp,
+        r: 1, g: 0.35 + hot * 0.5, b: 0.08 + hot * 0.15,
+        size: (0.05 + Math.random() * 0.12) * (0.6 + s.boom * 1.5),
+        life: 0.4 + Math.random() * (0.6 + s.boom), drag: 2.4, gravity: 0.3, grow: 1.8,
+      });
+    }
+
+    // Rock debris scaled by how much was actually removed.
+    const n = Math.min(s.debris, Math.round(res.removed / 4) + 3);
+    for (let k = 0; k < n; k++) {
+      const v = this.randomHemisphere(normal, 0.6);
+      const sp = s.debrisSpeed * (0.3 + Math.random() * 0.8);
+      const off = this.tmpA.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(crater * 0.8);
+      planet.debrisColor(g.x + off.x, g.y + off.y, g.z + off.z, this.tmpColor);
+      const pos = world.clone().addScaledVector(normal, 0.03);
+      this.debris.spawn(pos, v.multiplyScalar(sp), VOXEL * (0.2 + Math.random() * Math.random() * 1.2) * (0.55 + s.boom * 0.6), this.tmpColor, 0.4 + Math.random() * 0.8);
+    }
+
+    if (frozen) this.shatterFx(world, normal, crater);
+    if (proj?.lava) this.lavaPools.push({ g: g.clone(), t: 0, dur: proj.lava.duration, radius: proj.lava.radius, tick: 0 });
+    if (proj?.ejecta) this.throwEjecta(g, proj.ejecta);
+    if (proj?.lance) {
+      const dir = new THREE.Vector3(CENTER, CENTER, CENTER).sub(g);
+      const depth = dir.length() * proj.lance.depth;
+      this.lances.push({ g: g.clone(), dir: dir.normalize(), depth, progress: 0, carved: 0, radius: proj.lance.radius, cavity: proj.lance.cavity });
+    }
+
+    this.clouds?.punch(world, (crater * (1.4 + s.boom)) / RADIUS_VOX);
+    this.rig.shake(s.shake);
+    sfx.explosion(s.boom);
+  }
+
+  private randomHemisphere(n: THREE.Vector3, spread: number): THREE.Vector3 {
+    const v = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
+    if (v.dot(n) < 0) v.negate();
+    return v.multiplyScalar(spread).add(n).normalize();
+  }
+
 }
