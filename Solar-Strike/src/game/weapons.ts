@@ -84,3 +84,32 @@ export interface WeaponDef {
   projectile?: ProjectileSpec;
 }
 
+export const WEAPONS: WeaponDef[] = [
+  {
+    id: 'laser',
+    name: 'Laser',
+    category: 'Energy',
+    blurb: 'Hold and drag to carve a thin glowing trench.',
+    price: 0,
+    color: '#ff4d4d',
+    icon: '<path d="M3 21 L14 10" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><circle cx="16.5" cy="7.5" r="4" fill="currentColor" opacity=".35"/><circle cx="16.5" cy="7.5" r="2" fill="currentColor"/>',
+    beam: { width: 0.05, drillRate: 16, drillRadius: 2.4, heat: 0.9, color: 0xff3030, pitch: 1 },
+  },
+  {
+    id: 'missile',
+    name: 'Missile',
+    category: 'Projectiles',
+    blurb: 'Fast guided missile. Tap for one, hold for a volley.',
+    price: 0,
+    color: '#ffd166',
+    icon: '<path d="M5 19 L15 9 L19 5 L18 10 L9 19 Z" fill="currentColor"/><path d="M5 19 L3 21 M7 21 L5 19 L3 17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
+    projectile: {
+      speed: 7, size: 0.07, model: 'missile', trailColor: 0xffa040, cluster: 1, spread: 0, cooldown: 0.18,
+      impact: { crater: 3.2, heatRadius: 1.8, heat: 1.2, debris: 14, debrisSpeed: 0.9, fire: 60, flash: 0.9, shockwave: 0, shake: 0.12, boom: 0.15 },
+    },
+  },
+];
+
+export function weaponById(id: string): WeaponDef {
+  return WEAPONS.find(w => w.id === id) ?? WEAPONS[0];
+}
