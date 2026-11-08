@@ -136,6 +136,120 @@ async function boot(): Promise<void> {
     await enterPlanet(p.id);
   };
 
+  const hud = new Hud(document.getElementById('ui')!, {
+    // One click from the menu straight into gameplay (QA: at most one click before play).
+    onPlay: () => {
+      sfx.click();
+      const id = progress.ownsPlanet(progress.state.lastPlanet) ? progress.state.lastPlanet : PLANETS[0].id;
+      void enterPlanet(id);
+    },
+    onOpenShop: () => openOverlay(() => { hud.showShop(); refreshFreeCoins(); }),
+    onCloseShop: () => closeOverlay(() => hud.hideShop()),
+    onOpenSettings: () => openOverlay(() => hud.showSettings(progress.state.settings, inGame)),
+    onCloseSettings: () => closeOverlay(() => hud.hideSettings()),
+    onSelectPlanet: p => void selectPlanet(p),
+    onLockedPlanet: async p => {
+      sfx.click();
+      const coins = progress.state.coins;
+      const can = coins >= p.price;
+      const body = can
+        ? `${p.blurb} You have ${fmt(coins)} coins.`
+        : `You need ${fmt(p.price - coins)} more coins. Earn coins by destroying planets.`;
+      const pick = await hud.choose(`Unlock ${p.name}?`, body, [{ label: `${COIN} ${fmt(p.price)}`, cls: 'btn-buy', disabled: !can }]);
+      if (pick === 0 && buyPlanet(p)) void selectPlanet(p);
+    },
+    onSelectWeapon: w => { sfx.click(); game.selectWeapon(w.id); hud.selectWeapon(w.id); },
+    onLockedWeapon: async w => {
+      sfx.click();
+      const coins = progress.state.coins;
+      const can = coins >= w.price;
+      const ads = sdk.canShowRewarded();
+      const body = `${w.blurb} ` + (can ? `You have ${fmt(coins)} coins.` : `You need ${fmt(w.price - coins)} more coins.`)
+        + (ads ? ' Or watch a short ad to try it on this planet.' : '');
+      const options = [{ label: `${COIN} ${fmt(w.price)}`, cls: 'btn-buy', disabled: !can }];
+      if (ads) options.push({ label: '<span class="ad-tag">AD</span> Try it', cls: 'btn-reward', disabled: false });
+      const pick = await hud.choose(w.name, body, options);
+      if (pick === 0) {
+        if (buyWeapon(w)) { game.selectWeapon(w.id); hud.selectWeapon(w.id); }
+      } else if (pick === 1 && await rewardedAd()) {
+        hud.grantTrial(w.id);
+        game.selectWeapon(w.id);
+        hud.selectWeapon(w.id);
+        sfx.purchase();
+        hud.toast(`${w.name} unlocked for this planet!`, 'level', 2600);
+      }
+      resumeIfPlaying();
+    },
+    onBuy: (kind, id) => {
+      if (kind === 'weapon') {
+        const w = WEAPONS.find(x => x.id === id);
+        if (w) buyWeapon(w);
+      } else {
+        const p = PLANETS.find(x => x.id === id);
+        if (p) buyPlanet(p);
+      }
+    },
+    onFreeCoins: async () => {
+      sfx.click();
+      if (freeCoinsLeft() > 0) return;
+      if (await rewardedAd()) {
+        progress.state.freeCoinsAt = Date.now();
+        progress.addCoins(FREE_COINS);
+        sfx.purchase();
+        hud.toast(`+${FREE_COINS} ${COIN}`, 'xp');
+        syncWallet();
+      }
+      refreshFreeCoins();
+    },
+    onReset: () => { sfx.click(); void rebuild(); },
+    onOpenPlanets: () => openOverlay(() => hud.showPlanets(game.planetDef.id)),
+    onToggleSlowMo: () => { game.timeScale = game.timeScale < 1 ? 1 : 0.3; return game.timeScale < 1; },
+    onToggleSpin: () => { game.spin = !game.spin; return game.spin; },
+    onSettingsChange: s => {
+      progress.state.settings = s;
+      progress.queueSave();
+      applySettings(s);
+    },
+    onResetProgress: async () => {
+      sfx.click();
+      const ok = await hud.confirm('Reset all progress?', 'Your rank, coins and unlocked weapons and planets will be lost. Settings are kept. This cannot be undone.', 'Reset', 'Cancel', 'btn-danger');
+      if (!ok) return;
+      progress.reset();
+      game.selectWeapon(WEAPONS[0].id);
+      hud.selectWeapon(WEAPONS[0].id);
+      syncWallet();
+      goToMenu();
+      if (!progress.ownsPlanet(game.planetDef.id)) game.loadPlanet(PLANETS[0]);
+      hud.toast('Progress reset');
+    },
+    onMainMenu: () => { sfx.click(); goToMenu(); },
+    onDoubleRewards: async () => {
+      if (await rewardedAd()) {
+        rewardedThisBreak = true;
+        const rank = progress.addXp(lastDestroyXp);
+        progress.addCoins(lastDestroyXp * COINS_PER_XP);
+        sfx.purchase();
+        hud.toast(`+${fmt(lastDestroyXp * COINS_PER_XP)} bonus ${COIN}`, 'xp');
+        if (rank) onRankUp(rank);
+        syncWallet();
+      }
+    },
+    onSmashAgain: () => { sfx.click(); void rebuild(); },
+    onChoosePlanet: () => {
+      sfx.click();
+      hud.hideResults();
+      hud.showPlanets(game.planetDef.id);
+    },
+    onBackFromPlanets: () => {
+      sfx.click();
+      hud.hidePlanets();
+      if (resultsShown) {
+        hud.showResults(game.planetDef, lastDestroyKilled, lastDestroyXp * COINS_PER_XP, sdk.canShowRewarded() && !rewardedThisBreak, lastDestroyShots);
+      }
+      resumeIfPlaying();
+    },
+  });
+
   const onRankUp = (rank: Rank) => {
     sfx.levelUp();
     sdk.happyTime(); // reserved for rank-ups: QA says happytime is for real achievements only
