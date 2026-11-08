@@ -261,4 +261,43 @@ export class Hud {
     return s;
   }
 
+  // ---------------- Data ----------------
+  setPlanet(p: PlanetDef): void { this.planetName.textContent = p.name; }
+
+  /** `health`: 1 = intact, 0 = breaking apart. */
+  setStats(population: number, total: number, health: number): void {
+    const pct = Math.max(0, Math.min(1, health));
+    const isCritical = pct < 0.3 && pct > 0;
+    this.popText.textContent = total > 0 ? `Population ${formatPeople(population)}${isCritical ? ' (CRITICAL)' : ''}` : (isCritical ? '⚠️ CORE UNSTABLE' : 'Uninhabited');
+    this.integrityFill.style.width = `${pct * 100}%`;
+    this.integrityFill.classList.toggle('low', pct < 0.35);
+  }
+
+  selectWeapon(id: string): void {
+    this.selectedWeapon = id;
+    this.renderWeapons();
+  }
+
+  isWeaponAvailable(w: WeaponDef): boolean {
+    return this.ownedWeapons.has(w.id) || this.trialWeapons.has(w.id);
+  }
+
+  private renderWeapons(): void {
+    this.weaponBar.innerHTML = '';
+    for (const w of WEAPONS) {
+      const available = this.isWeaponAvailable(w);
+      const b = el('button', `weapon-btn${w.id === this.selectedWeapon ? ' selected' : ''}${available ? '' : ' locked'}`);
+      b.style.setProperty('--wc', w.color);
+      b.innerHTML = `${svg(w.icon)}<span>${w.name}</span>${available ? '' : `<em>${COIN}${formatCoins(w.price)}</em>`}`;
+      if (this.trialWeapons.has(w.id) && !this.ownedWeapons.has(w.id)) b.classList.add('trial');
+      b.onclick = () => {
+        if (available) this.h.onSelectWeapon(w);
+        else this.h.onLockedWeapon(w);
+      };
+      this.weaponBar.append(b);
+    }
+    const sel = WEAPONS.find(w => w.id === this.selectedWeapon);
+    this.weaponInfo.textContent = sel ? sel.blurb : '';
+  }
+
 }
