@@ -251,6 +251,30 @@ export class VoxelPlanet {
     this.markRegion(x0, y0, z0, x1, y1, z1, 'heat');
   }
 
+  /** Freeze ground (reduces heat, sets negative heat for icy crystal glow, removes scorch). */
+  freeze(cx: number, cy: number, cz: number, radius: number, amount: number): void {
+    const r = radius;
+    const x0 = Math.max(1, Math.floor(cx - r)), x1 = Math.min(GRID - 2, Math.ceil(cx + r));
+    const y0 = Math.max(1, Math.floor(cy - r)), y1 = Math.min(GRID - 2, Math.ceil(cy + r));
+    const z0 = Math.max(1, Math.floor(cz - r)), z1 = Math.min(GRID - 2, Math.ceil(cz + r));
+    const h = this.heat, s = this.scorch, f = this.field;
+    for (let z = z0; z <= z1; z++) {
+      for (let y = y0; y <= y1; y++) {
+        let i = x0 + y * GRID + z * NXY;
+        for (let x = x0; x <= x1; x++, i++) {
+          if (f[i] < -2) continue;
+          const dx = x - cx, dy = y - cy, dz = z - cz;
+          const d2 = (dx * dx + dy * dy + dz * dz) / (r * r);
+          if (d2 >= 1) continue;
+          const k = (1 - d2) * (1 - d2) * amount;
+          h[i] = Math.max(-2.5, h[i] - k * 1.5);
+          s[i] = Math.max(0, s[i] - Math.round(k * 140));
+        }
+      }
+    }
+    this.markRegion(x0, y0, z0, x1, y1, z1, 'heat');
+  }
+
   /** Heat a thin expanding ring on the surface (shockwave fire front). */
   heatRing(cx: number, cy: number, cz: number, ringRadius: number, width: number, amount: number): void {
     const r = ringRadius + width;

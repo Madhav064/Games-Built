@@ -108,6 +108,16 @@ export const WEAPONS: WeaponDef[] = [
       impact: { crater: 3.2, heatRadius: 1.8, heat: 1.2, debris: 14, debrisSpeed: 0.9, fire: 60, flash: 0.9, shockwave: 0, shake: 0.12, boom: 0.15 },
     },
   },
+  {
+    id: 'cryo',
+    name: 'Cryo Beam',
+    category: 'Energy',
+    blurb: 'Freezes the ground solid. Frozen rock SHATTERS when anything hits it.',
+    price: 450,
+    color: '#38e1ff',
+    icon: '<path d="M12 2v20M2 12h20M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="3" fill="currentColor"/>',
+    beam: { width: 0.07, drillRate: 0, drillRadius: 3.4, heat: 0, color: 0x38e1ff, pitch: 1.6, isCryo: true },
+  },
 ];
 
 export function weaponById(id: string): WeaponDef {

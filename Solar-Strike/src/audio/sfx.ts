@@ -177,3 +177,25 @@ export function beamLoop(pitch = 1): () => void {
   };
 }
 
+/** Crystalline ice crackle and sub-zero frost shimmer. */
+export function freezeBurst(): void {
+  const c = ensure();
+  if (!c || !master) return;
+  const t = c.currentTime;
+  const o = c.createOscillator();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(2400, t);
+  o.frequency.exponentialRampToValueAtTime(800, t + 0.35);
+  const bp = c.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.setValueAtTime(3200, t);
+  bp.Q.value = 6;
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.18, t + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+  o.connect(bp).connect(g).connect(master);
+  o.start(t);
+  o.stop(t + 0.4);
+}
+
