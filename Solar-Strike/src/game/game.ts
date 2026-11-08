@@ -388,4 +388,221 @@ export class Game {
     return this.planet.raycast(this.raycaster.ray.origin, this.raycaster.ray.direction, out);
   }
 
+  // ----------------------------------------------------------
+  // Weapons
+  // ----------------------------------------------------------
+  private fireProjectile(): void {
+    const spec = this.weapon.projectile!;
+    const planet = this.planet;
+    if (!planet) return;
+    const hit = this.aim(new THREE.Vector3());
+    if (!hit) return;
+    this.cooldown = spec.cooldown;
+    for (let k = 0; k < spec.cluster; k++) {
+      let target = hit.clone();
+      if (spec.spread > 0) {
+        target.add(new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(spec.spread * 2));
+        target = this.surfacePoint(target) ?? hit.clone();
+      }
+      const targetWorld = planet.gridToWorld(target, new THREE.Vector3());
+      // Launch from off-screen, from the camera's side of the planet.
+      const toCam = this.camera.position.clone().sub(targetWorld).normalize();
+      const side = new THREE.Vector3().crossVectors(toCam, this.camera.up).normalize();
+      const up = new THREE.Vector3().crossVectors(side, toCam).normalize();
+      const dist = spec.model === 'rock' ? 10 : 7;
+      const lob = (spec.homing ?? 6) < 3;
+      const start = targetWorld.clone()
+        .addScaledVector(toCam, dist * (lob ? 0.35 : 0.55))
+        .addScaledVector(side, (Math.random() < 0.5 ? -1 : 1) * dist * (0.5 + Math.random() * 0.3))
+        .addScaledVector(up, lob ? -dist * 0.15 : dist * (0.25 + Math.random() * 0.35));
+      const vel = targetWorld.clone().sub(start).normalize();
+      // Lobbed shots leave upward and curve down onto the target.
+      if (lob) vel.addScaledVector(up, 1.1).normalize();
+      // Waypoint on the camera ray above the target (grid space, so it turns with the planet).
+      const toCamG = planet.worldToGrid(this.camera.position, new THREE.Vector3()).sub(target).normalize();
+      const approach = target.clone().addScaledVector(toCamG, lob ? 20 : 12);
+      this.launch(spec, spec.impact, start, vel.multiplyScalar(spec.speed), target, { canSplit: !!spec.split, approach });
+    }
+    sfx.whoosh(spec.model === 'rock' ? 1.6 : 0.5, spec.model === 'rock' ? 0.5 : 1.2);
+    this.shotsThisPlanet++;
+    this.events.onShotFired?.();
+  }
+
+  private launch(
+    spec: ProjectileSpec, impact: ImpactSpec, start: THREE.Vector3, vel: THREE.Vector3, target: THREE.Vector3,
+    o: { homing?: number; canSplit?: boolean; armAt?: number; size?: number; approach?: THREE.Vector3 } = {},
+  ): void {
+    const mesh = this.makeProjectileMesh(spec.model, o.size ?? spec.size);
+    mesh.position.copy(start);
+    this.scene.add(mesh);
+    this.projectiles.push({
+      spec, impact, mesh, pos: start.clone(), vel: vel.clone(), target: target.clone(), trailTimer: 0, age: 0,
+      homing: o.homing ?? spec.homing ?? 6, armAt: o.armAt ?? 0, canSplit: o.canSplit ?? false,
+      approach: o.approach?.clone() ?? null,
+    });
+  }
+
+  private removeProjectile(i: number): void {
+    const p = this.projectiles[i];
+    p.mesh.removeFromParent();
+    p.mesh.traverse(o => {
+      const m = o as THREE.Mesh;
+      if (m.geometry) m.geometry.dispose();
+      if (m.material) (m.material as THREE.Material).dispose();
+    });
+    this.projectiles.splice(i, 1);
+  }
+
+  private makeProjectileMesh(model: ProjectileSpec['model'], size: number): THREE.Object3D {
+    if (model === 'rock') {
+      const geo = new THREE.IcosahedronGeometry(size, 1);
+      const p = geo.attributes.position as THREE.BufferAttribute;
+      for (let i = 0; i < p.count; i++) {
+        const s = 0.8 + Math.random() * 0.35;
+        p.setXYZ(i, p.getX(i) * s, p.getY(i) * s, p.getZ(i) * s);
+      }
+      geo.computeVertexNormals();
+      return new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x6b5847, roughness: 1, flatShading: true, emissive: 0x401000, emissiveIntensity: 0.6 }));
+    }
+    if (model === 'blob') {
+      const g = new THREE.Group();
+      g.add(
+        new THREE.Mesh(new THREE.SphereGeometry(size * 0.6, 12, 10), new THREE.MeshBasicMaterial({ color: 0xfff0c0 })),
+        new THREE.Mesh(new THREE.SphereGeometry(size, 12, 10), new THREE.MeshBasicMaterial({
+          color: 0xff7a20, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false,
+        })),
+      );
+      return g;
+    }
+    if (model === 'rod') {
+      const g = new THREE.Group();
+      const body = new THREE.Mesh(
+        new THREE.CylinderGeometry(size * 0.08, size * 0.08, size * 2.2, 8),
+        new THREE.MeshStandardMaterial({ color: 0x8899aa, metalness: 0.85, roughness: 0.25 }),
+      );
+      const tip = new THREE.Mesh(
+        new THREE.ConeGeometry(size * 0.08, size * 0.5, 8),
+        new THREE.MeshBasicMaterial({ color: 0x50d8ff }),
+      );
+      tip.position.y = size * 1.35;
+      g.add(body, tip);
+      return g;
+    }
+    if (model === 'singularity') {
+      const g = new THREE.Group();
+      const core = new THREE.Mesh(
+        new THREE.SphereGeometry(size * 0.55, 16, 16),
+        new THREE.MeshBasicMaterial({ color: 0x000000 }),
+      );
+      const disk = new THREE.Mesh(
+        new THREE.RingGeometry(size * 0.55, size * 1.6, 28),
+        new THREE.MeshBasicMaterial({ color: 0xc44dff, side: THREE.DoubleSide, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending }),
+      );
+      disk.rotation.x = Math.PI / 3;
+      g.add(core, disk);
+      return g;
+    }
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(
+      new THREE.CylinderGeometry(size * 0.18, size * 0.18, size, 8),
+      new THREE.MeshStandardMaterial({ color: model === 'warhead' ? 0x3a3d44 : 0xe8e8ec, metalness: 0.5, roughness: 0.4 }),
+    );
+    const nose = new THREE.Mesh(
+      new THREE.ConeGeometry(size * 0.18, size * 0.35, 8),
+      new THREE.MeshStandardMaterial({ color: model === 'warhead' ? 0xd8c020 : 0xd23b3b, metalness: 0.3, roughness: 0.5 }),
+    );
+    nose.position.y = size * 0.67;
+    const glow = new THREE.Mesh(
+      new THREE.SphereGeometry(size * 0.2, 8, 6),
+      new THREE.MeshBasicMaterial({ color: 0xffc070 }),
+    );
+    glow.position.y = -size * 0.55;
+    g.add(body, nose, glow);
+    return g;
+  }
+
+  private updateProjectiles(dt: number): void {
+    const planet = this.planet;
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      const p = this.projectiles[i];
+      const spec = p.spec;
+      p.age += dt;
+      if (!planet || this.destroyed) {
+        this.removeProjectile(i);
+        continue;
+      }
+      // Home in on the (rotating) target point, via the line-of-sight waypoint first.
+      const targetWorld = planet.gridToWorld(p.target, this.tmpA);
+      const remaining = targetWorld.distanceTo(p.pos);
+      if (p.canSplit && spec.split && remaining < 1.3) {
+        this.split(p);
+        this.removeProjectile(i);
+        continue;
+      }
+      if (p.approach) {
+        const wp = planet.gridToWorld(p.approach, this.tmpB);
+        if (wp.distanceTo(p.pos) < 0.3 || remaining < 0.5) p.approach = null;
+      }
+      const goal = p.approach ? planet.gridToWorld(p.approach, this.tmpB) : targetWorld;
+      const want = this.tmpB.copy(goal).sub(p.pos);
+      const speed = spec.speed * (1 + p.age * 0.6);
+      want.normalize().multiplyScalar(speed);
+      if (!p.approach && remaining < 1.0 && p.armAt === 0) {
+        // Final leg: fly straight at the target so the shot can't drift off the click point.
+        p.vel.copy(want).setLength(Math.max(p.vel.length(), speed));
+      } else {
+        p.vel.lerp(want, Math.min(1, dt * (p.approach ? Math.max(p.homing, 3) : p.homing)));
+      }
+      const step = p.vel.length() * dt;
+      // Sub-step so fast projectiles don't tunnel through the surface.
+      let hit = false;
+      const armed = p.age >= p.armAt;
+      const steps = Math.max(1, Math.ceil(step / (VOXEL * 1.5)));
+      for (let s = 0; s < steps; s++) {
+        p.pos.addScaledVector(p.vel, dt / steps);
+        if (armed && planet.isSolidWorld(p.pos, this.tmpC)) { hit = true; break; }
+      }
+      if (armed && remaining < step) hit = true;
+      p.mesh.position.copy(p.pos);
+      if (spec.model === 'rock' || spec.model === 'blob') {
+        p.mesh.rotation.x += dt * 1.3; p.mesh.rotation.y += dt * 0.7;
+      } else {
+        p.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), this.tmpA.copy(p.vel).normalize());
+      }
+      // Exhaust / entry trail
+      p.trailTimer -= dt;
+      if (p.trailTimer <= 0) {
+        p.trailTimer = 0;
+        const c = this.tmpColor.set(spec.trailColor);
+        const back = this.tmpA.copy(p.vel).normalize().multiplyScalar(-spec.size * 0.6);
+        const nearPlanet = p.pos.length() < WORLD_RADIUS * 1.6;
+        const n = spec.model === 'rock' ? (nearPlanet ? 4 : 2) : 3;
+        const vlen = p.vel.length() || 1;
+        for (let k = 0; k < n; k++) {
+          // Spread spawns along this frame's path so fast trails stay continuous.
+          const along = -Math.random() * step;
+          const dirx = p.vel.x / vlen, diry = p.vel.y / vlen, dirz = p.vel.z / vlen;
+          this.particles.spawn({
+            x: p.pos.x + back.x + dirx * along + (Math.random() - 0.5) * spec.size * 0.4,
+            y: p.pos.y + back.y + diry * along + (Math.random() - 0.5) * spec.size * 0.4,
+            z: p.pos.z + back.z + dirz * along + (Math.random() - 0.5) * spec.size * 0.4,
+            vx: back.x * 2 + (Math.random() - 0.5) * 0.1, vy: back.y * 2 + (Math.random() - 0.5) * 0.1, vz: back.z * 2 + (Math.random() - 0.5) * 0.1,
+            r: c.r, g: c.g * (nearPlanet ? 0.8 : 1), b: c.b,
+            size: spec.size * (spec.model === 'rock' ? (nearPlanet ? 1.6 : 0.8) : 1.4),
+            life: spec.model === 'rock' ? 0.7 : 0.45, drag: 2, grow: 2.2,
+          });
+        }
+      }
+      if (hit) {
+        // Close to the target: detonate exactly on it (sub-steps can stop a few voxels short).
+        const g = remaining < 0.25 ? p.target.clone() : planet.worldToGrid(p.pos, new THREE.Vector3());
+        if (spec.isBlackHole) this.spawnSingularity(p.pos.clone(), g);
+        else this.impact(g, p.impact, spec);
+        this.removeProjectile(i);
+      } else if (p.age > 12) {
+        this.removeProjectile(i);
+      }
+    }
+  }
+
 }
