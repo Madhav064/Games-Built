@@ -949,4 +949,118 @@ export class Game {
     this.events.onXp?.(amount);
   }
 
+  // ----------------------------------------------------------
+  // Loop
+  // ----------------------------------------------------------
+  start(): void {
+    this.renderer.setAnimationLoop(() => this.frame());
+  }
+
+  private frame(): void {
+    this.clock.update();
+    const rawDt = Math.min(0.05, this.clock.getDelta());
+    const dt = this.paused ? 0 : rawDt * this.timeScale;
+
+    this.rig.update(rawDt);
+    const planet = this.planet;
+
+    if (!this.paused) {
+      if (planet && !this.destroyed && this.spin) planet.group.rotation.y += dt * 0.05;
+      if (this.clouds) this.clouds.mesh.rotation.y += dt * 0.012;
+
+      this.cooldown -= dt;
+      if (this.firing && this.weapon.projectile && this.cooldown <= 0) this.fireProjectile();
+      this.updateBeam(dt);
+      this.updateProjectiles(dt);
+      this.updateSingularities(dt);
+      this.updateLava(dt);
+      this.updateLances(dt);
+      this.impactLight.intensity *= Math.exp(-dt * 8);
+
+      // Shockwave fire fronts
+      for (let i = this.shockwaves.length - 1; i >= 0; i--) {
+        const s = this.shockwaves[i];
+        s.t += dt;
+        s.tick -= dt;
+        if (s.tick <= 0 && planet) {
+          s.tick = 0.07;
+          const k = Math.min(1, s.t / s.dur);
+          const r = s.maxR * (1 - Math.pow(1 - k, 2));
+          planet.heatRing(s.cx, s.cy, s.cz, r, 2.0, s.heat * (1 - k * 0.8));
+          if (s.kill && !this.destroyed) this.population?.blast(s.cx, s.cy, s.cz, r);
+        }
+        if (s.t >= s.dur) this.shockwaves.splice(i, 1);
+      }
+
+      if (planet && !this.destroyed) {
+        planet.update(dt);
+        this.population?.update(dt);
+        // XP: mass destroyed and population lost.
+        const integ = planet.integrity;
+        if (this.lastIntegrity - integ > 0.002) {
+          this.awardXp((this.lastIntegrity - integ) * 300);
+          this.lastIntegrity = integ;
+        }
+        const pop = this.population;
+        if (pop && pop.total > 0) {
+          const share = pop.killed / pop.total;
+          if (share - this.lastKilledShare > 0.004) {
+            this.awardXp((share - this.lastKilledShare) * 120);
+            this.lastKilledShare = share;
+          }
+        }
+        const h = Math.max(0, Math.min(1, (integ - 0.6) / 0.38));
+        this.clouds?.setHealth(h);
+        if (this.atmosphere) (this.atmosphere.material as THREE.ShaderMaterial).uniforms.uStrength.value = this.atmoStrength * (0.3 + 0.7 * h);
+        if (planet.coreIntegrity < 0.8 || integ < 0.6) this.destroyPlanet();
+      }
+      this.shatter?.update(dt);
+      this.particles.update(dt);
+      this.debris.update(dt);
+      this.flashes.update(dt);
+      this.rings.update(dt);
+
+      this.statsTimer -= rawDt;
+      if (this.statsTimer <= 0) { this.statsTimer = 0.15; this.emitStats(); }
+    }
+
+    this.composer.render();
+  }
+
+  private emitStats(): void {
+    const pop = this.population;
+    this.events.onStats?.({
+      population: this.destroyed ? 0 : pop?.remaining ?? 0,
+      total: pop?.total ?? 0,
+      health: this.destroyed ? 0 : this.health,
+    });
+  }
+
+  private resize(): void {
+    const w = window.innerWidth, h = window.innerHeight;
+    this.camera.aspect = w / h;
+    // Keep the planet framed on tall (portrait) screens.
+    this.camera.fov = w < h ? 55 : 45;
+    this.camera.updateProjectionMatrix();
+    // Fit the planet (plus atmosphere and a margin) inside the narrower field of view.
+    const vHalf = THREE.MathUtils.degToRad(this.camera.fov / 2);
+    const hHalf = Math.atan(Math.tan(vHalf) * this.camera.aspect);
+    const fit = (WORLD_RADIUS * 1.25) / Math.sin(Math.min(vHalf, hHalf));
+    const prevBase = this.rig.baseDist;
+    this.rig.baseDist = Math.max(7.2, fit);
+    if (Math.abs(prevBase - this.rig.baseDist) > 0.01) this.rig.zoom(this.rig.baseDist / prevBase);
+    this.renderer.setSize(w, h);
+    this.composer.setSize(w, h);
+    this.bloom.setSize(w / 2, h / 2);
+    this.particles.setViewportHeight(h);
+    this.population?.setViewportHeight(h);
+  }
+
+  /** Called when the game must be silent and still (ads). */
+  setPaused(p: boolean): void {
+    this.paused = p;
+    if (p) this.stopFiring();
+  }
+
+  get xpThisPlanet(): number { return this.xpEarned; }
 }
