@@ -270,6 +270,26 @@ export const PLANETS: PlanetDef[] = [
     atmosphere: { color: 0x2e66ff, strength: 1.5 },
     price: 1200,
   },
+  {
+    id: 'sun',
+    name: 'The Sun',
+    blurb: 'A roaring ball of stellar plasma. Extreme thermonuclear radiation and boiling coronal loops.',
+    seed: 999,
+    population: 0,
+    terrainAmp: 1.1,
+    terrainFreq: 2.8,
+    seaLevel: null,
+    iceCap: 2,
+    craters: 0,
+    colors: {
+      deepOcean: 0, ocean: 0, shore: 0,
+      low: 0xff3b00, mid: 0xff7b00, high: 0xffc200, peak: 0xffffff, ice: 0xffffff,
+      crust: 0xff2a00, mantle: 0xff6200, outerCore: 0xffb800, innerCore: 0xffffff,
+    },
+    clouds: { color: 0xffea70, coverage: 0.6, opacity: 0.75 },
+    atmosphere: { color: 0xffa010, strength: 2.4 },
+    price: 2000,
+  },
 ];
 
 // ------------------------------------------------------------
