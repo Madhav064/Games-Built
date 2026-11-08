@@ -774,4 +774,110 @@ export class Game {
     return v.multiplyScalar(spread).add(n).normalize();
   }
 
+  private updateBeam(dt: number): void {
+    const spec = this.weapon.beam;
+    const planet = this.planet;
+    if (!spec || !this.firing || !planet || this.destroyed) { this.beam.hide(); return; }
+    // Nova Beam: grows wider, hotter and whiter the longer it is held.
+    this.beamHold += dt;
+    let radius = spec.drillRadius, width = spec.width;
+    let charge = 0;
+    if (spec.charge) {
+      const k = Math.min(1, this.beamHold / spec.charge.time);
+      charge = k * k * (3 - 2 * k);
+      radius += (spec.charge.maxRadius - radius) * charge;
+      width += (spec.charge.maxWidth - width) * charge;
+      this.beam.setColor(this.tmpColor.set(spec.color).lerp(this.tmpColor2.set(spec.charge.endColor), charge));
+      this.rig.shake(0.012 * charge);
+    }
+    this.raycaster.setFromCamera(this.pointerNdc, this.camera);
+    const ray = this.raycaster.ray;
+    // Emitter sits off-screen to the upper right of the view.
+    const right = this.tmpA.set(1, 0, 0).applyQuaternion(this.camera.quaternion);
+    const up = this.tmpB.set(0, 1, 0).applyQuaternion(this.camera.quaternion);
+    const from = this.camera.position.clone().addScaledVector(right, 2.2).addScaledVector(up, 1.6)
+      .addScaledVector(ray.direction, 0.8);
+    let hitG = planet.raycast(ray.origin, ray.direction, new THREE.Vector3());
+    if (!hitG) {
+      this.beam.show(from, ray.origin.clone().addScaledVector(ray.direction, 30), width, dt);
+      return;
+    }
+    // Drill along the beam direction (in grid space). Each carve bites about a voxel
+    // deeper, so carve on a fixed 60 Hz step: same drilling speed at any frame rate,
+    // and slow motion slows it down.
+    const dirG = planet.worldToGrid(ray.origin.clone().add(ray.direction), new THREE.Vector3())
+      .sub(planet.worldToGrid(ray.origin, new THREE.Vector3())).normalize();
+    const STEP = 1 / 60;
+    this.beamAcc = Math.min(this.beamAcc + dt, STEP * 4);
+    let frozenHit = false;
+    while (hitG && this.beamAcc >= STEP) {
+      this.beamAcc -= STEP;
+      let r = radius;
+      // Burning beams slice through frozen ground far faster.
+      if (!spec.isCryo && planet.coldAt(hitG.x, hitG.y, hitG.z, r) < -0.4) { r *= 1.8; frozenHit = true; }
+      if (spec.drillRate > 0) {
+        const adv = spec.drillRate * STEP;
+        const c = hitG.clone().addScaledVector(dirG, adv - r * 0.7);
+        planet.carve(c.x, c.y, c.z, r, 0.15);
+      }
+      if (spec.isCryo) {
+        planet.freeze(hitG.x, hitG.y, hitG.z, r * 2.8, 3.2 * STEP * 6);
+      } else {
+        planet.addHeat(hitG.x, hitG.y, hitG.z, r * 2.2, spec.heat * STEP * 6);
+      }
+      this.population?.blast(hitG.x, hitG.y, hitG.z, r * 1.2);
+      if (this.beamAcc >= STEP) hitG = planet.raycast(ray.origin, ray.direction, hitG) ?? null;
+    }
+    if (!hitG) {
+      this.beam.show(from, ray.origin.clone().addScaledVector(ray.direction, 30), width, dt);
+      return;
+    }
+
+    const hitW = planet.gridToWorld(hitG, new THREE.Vector3());
+    this.beam.show(from, hitW, width, dt);
+    const normal = hitW.clone().normalize();
+    if (frozenHit && performance.now() - this.beamShatterAt > 220) {
+      this.beamShatterAt = performance.now();
+      this.shatterFx(hitW, normal, radius * 1.8);
+    }
+    // Sparks + molten spatter or frost crystals
+    const scale = 1 + charge * 2;
+    const bc = this.tmpColor.set(spec.color);
+    if (spec.isCryo) {
+      for (let k = 0; k < 3; k++) {
+        const v = this.randomHemisphere(normal, 1.2);
+        const sp = 0.3 + Math.random() * 0.7;
+        this.particles.spawn({
+          x: hitW.x, y: hitW.y, z: hitW.z, vx: v.x * sp, vy: v.y * sp, vz: v.z * sp,
+          r: 0.5, g: 0.9, b: 1.0, size: 0.04 + Math.random() * 0.05,
+          life: 0.3 + Math.random() * 0.3, drag: 1.8, gravity: 0.2,
+        });
+      }
+      this.particles.spawn({ x: hitW.x, y: hitW.y, z: hitW.z, vx: 0, vy: 0, vz: 0, r: 0.6, g: 0.95, b: 1.0, size: 0.32, life: 0.08 });
+      if (Math.random() < 0.12) sfx.freezeBurst();
+    } else {
+      for (let k = 0; k < 3 + Math.round(charge * 5); k++) {
+        const v = this.randomHemisphere(normal, 1.2);
+        const sp = (0.4 + Math.random() * 0.8) * scale;
+        this.particles.spawn({
+          x: hitW.x, y: hitW.y, z: hitW.z, vx: v.x * sp, vy: v.y * sp, vz: v.z * sp,
+          r: 1, g: 0.5 + Math.random() * 0.4, b: 0.2, size: (0.03 + Math.random() * 0.05) * scale,
+          life: 0.25 + Math.random() * 0.4, drag: 1.5, gravity: 0.6,
+        });
+      }
+      this.particles.spawn({ x: hitW.x, y: hitW.y, z: hitW.z, vx: 0, vy: 0, vz: 0, r: bc.r, g: bc.g * 0.6 + 0.3, b: bc.b * 0.6 + 0.2, size: 0.3 * scale, life: 0.08 });
+    }
+    this.beamHitTimer -= dt;
+    if (this.beamHitTimer <= 0) {
+      this.beamHitTimer = 0.07;
+      if (spec.drillRate > 0) {
+        planet.debrisColor(hitG.x, hitG.y, hitG.z, this.tmpColor);
+        const v = this.randomHemisphere(normal, 0.7).multiplyScalar((0.5 + Math.random() * 0.6) * scale);
+        this.debris.spawn(hitW.clone().addScaledVector(normal, 0.04), v, VOXEL * (0.2 + Math.random() * 0.4) * scale, this.tmpColor, 1.2, 4);
+      }
+      this.clouds?.punch(hitW, 0.05 * scale);
+    }
+    this.rig.shake(0.004);
+  }
+
 }
