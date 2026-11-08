@@ -362,4 +362,30 @@ export class Game {
     this.pointerNdc.set((x / window.innerWidth) * 2 - 1, -(y / window.innerHeight) * 2 + 1);
   }
 
+  private startFiring(): void {
+    if (this.paused || this.destroyed || !this.inputEnabled) return;
+    this.firing = true;
+    if (this.weapon.beam) {
+      this.shotsThisPlanet++;
+      this.events.onShotFired?.();
+      if (!this.stopBeamSound) this.stopBeamSound = sfx.beamLoop(this.weapon.beam.pitch);
+    }
+    if (this.weapon.projectile && this.cooldown <= 0) this.fireProjectile();
+  }
+
+  stopFiring(): void {
+    this.firing = false;
+    this.beamAcc = 0;
+    this.beamHold = 0;
+    this.beam.hide();
+    if (this.stopBeamSound) { this.stopBeamSound(); this.stopBeamSound = null; }
+  }
+
+  /** Planet hit under the pointer, in grid coordinates. */
+  private aim(out: THREE.Vector3): THREE.Vector3 | null {
+    if (!this.planet) return null;
+    this.raycaster.setFromCamera(this.pointerNdc, this.camera);
+    return this.planet.raycast(this.raycaster.ray.origin, this.raycaster.ray.direction, out);
+  }
+
 }
