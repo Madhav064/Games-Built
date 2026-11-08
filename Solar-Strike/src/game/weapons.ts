@@ -131,6 +131,20 @@ export const WEAPONS: WeaponDef[] = [
       impact: { crater: 4, heatRadius: 2.6, heat: 2.0, debris: 40, debrisSpeed: 1.0, fire: 300, flash: 4.5, shockwave: 34, shockKill: true, shockHeat: 0.3, shake: 0.55, boom: 0.75 },
     },
   },
+  {
+    id: 'asteroid',
+    name: 'Asteroid',
+    category: 'Cosmic',
+    blurb: 'One giant crater. Its debris rains back down and punches more craters.',
+    price: 1100,
+    color: '#c9a27e',
+    icon: '<path d="M7 6 L13 4 L18 7 L20 13 L16 19 L9 20 L4 15 L4 9 Z" fill="currentColor"/><circle cx="10" cy="10" r="1.6" fill="#000" opacity=".35"/><circle cx="14.5" cy="14" r="2.2" fill="#000" opacity=".3"/>',
+    projectile: {
+      speed: 3.2, size: 0.34, model: 'rock', trailColor: 0xff7a30, cluster: 1, spread: 0, cooldown: 1.2,
+      impact: { crater: 11, heatRadius: 1.6, heat: 1.6, debris: 160, debrisSpeed: 1.3, fire: 360, flash: 4.2, shockwave: 24, shake: 0.75, boom: 0.9 },
+      ejecta: { count: 9, crater: 3, minRange: 13, maxRange: 26 },
+    },
+  },
 ];
 
 export function weaponById(id: string): WeaponDef {
