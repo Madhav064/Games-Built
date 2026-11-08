@@ -199,3 +199,46 @@ export function freezeBurst(): void {
   o.stop(t + 0.4);
 }
 
+/** Deep sub-bass gravitational vacuum drone for active singularities. */
+export function blackHoleRumble(): void {
+  const c = ensure();
+  if (!c || !master) return;
+  const t = c.currentTime;
+  const o = c.createOscillator();
+  o.type = 'sawtooth';
+  o.frequency.setValueAtTime(42, t);
+  o.frequency.exponentialRampToValueAtTime(26, t + 1.8);
+  const lp = c.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(140, t);
+  lp.frequency.exponentialRampToValueAtTime(60, t + 1.8);
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.35, t + 0.1);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 2.0);
+  o.connect(lp).connect(g).connect(master);
+  o.start(t);
+  o.stop(t + 2.1);
+}
+
+/** Sucking vacuum reverse whoosh into a violent spatial collapse. */
+export function singularityCollapse(): void {
+  const c = ensure();
+  if (!c || !master) return;
+  const t = c.currentTime;
+  // Inward suction whoosh
+  const src = noise(c);
+  const bp = c.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.setValueAtTime(120, t);
+  bp.frequency.exponentialRampToValueAtTime(1800, t + 0.5);
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(0.4, t + 0.48);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
+  src.connect(bp).connect(g).connect(master);
+  src.start(t);
+  src.stop(t + 0.6);
+  // Big detonation at t + 0.48
+  setTimeout(() => explosion(0.95), 450);
+}

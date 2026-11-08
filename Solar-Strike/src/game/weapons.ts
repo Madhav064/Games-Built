@@ -145,6 +145,20 @@ export const WEAPONS: WeaponDef[] = [
       ejecta: { count: 9, crater: 3, minRange: 13, maxRange: 26 },
     },
   },
+  {
+    id: 'black-hole',
+    name: 'Black Hole',
+    category: 'Cosmic',
+    blurb: 'Sticks to the surface, drags in rock and debris, grows, then collapses.',
+    price: 2400,
+    color: '#c056ff',
+    icon: '<circle cx="12" cy="12" r="4.2" fill="currentColor" opacity=".25"/><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.4"/><ellipse cx="12" cy="12" rx="9" ry="3.5" fill="none" stroke="currentColor" stroke-width="2" transform="rotate(-30 12 12)"/><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="2 3"/>',
+    projectile: {
+      speed: 4.2, size: 0.28, model: 'singularity', trailColor: 0xcc44ff, cluster: 1, spread: 0, cooldown: 2.0,
+      isBlackHole: true,
+      impact: { crater: 12, heatRadius: 0.8, heat: 0.1, debris: 50, debrisSpeed: 0.4, fire: 60, flash: 5.5, shockwave: 30, shake: 0.9, boom: 1.0 },
+    },
+  },
 ];
 
 export function weaponById(id: string): WeaponDef {
