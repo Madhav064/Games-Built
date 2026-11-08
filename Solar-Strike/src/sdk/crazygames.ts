@@ -115,3 +115,33 @@ export function onAdPlayback(listener: (playing: boolean) => void): () => void {
   return () => adListeners.delete(listener);
 }
 
+function requestAd(type: 'midgame' | 'rewarded'): Promise<boolean> {
+  const s = active();
+  if (!s) return Promise.resolve(false);
+  return new Promise(resolve => {
+    const done = (watched: boolean) => {
+      adListeners.forEach(l => l(false));
+      resolve(watched);
+    };
+    const requested = safely('requestAd', () => {
+      s.ad.requestAd(type, {
+        adStarted: () => adListeners.forEach(l => l(true)),
+        adFinished: () => done(true),
+        adError: (error: unknown) => {
+          const code = (error as { code?: string } | null)?.code;
+          if (code === 'adsDisabled' || code === 'adblock') adsUsable = false;
+          done(false);
+        },
+      });
+      return true;
+    }, false);
+    if (!requested) done(false);
+  });
+}
+
+/** Break ad between planets. CrazyGames also applies its own frequency cap. */
+export const requestBreakAd = (): Promise<boolean> => requestAd('midgame');
+
+/** Opt-in rewarded ad. Resolves true only when the ad was watched to the end. */
+export const requestRewardedAd = (): Promise<boolean> => requestAd('rewarded');
+
