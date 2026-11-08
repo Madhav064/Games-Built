@@ -300,4 +300,32 @@ export class Hud {
     this.weaponInfo.textContent = sel ? sel.blurb : '';
   }
 
+  // ---------------- Feedback ----------------
+  toast(html: string, kind: 'info' | 'xp' | 'level' = 'info', ms = 2200): void {
+    const t = el('div', `toast toast-${kind}`, html);
+    this.toastBox.append(t);
+    requestAnimationFrame(() => t.classList.add('show'));
+    setTimeout(() => {
+      t.classList.remove('show');
+      setTimeout(() => t.remove(), 400);
+    }, ms);
+  }
+
+  /** Small rising "+coins" number; batched so rapid gains don't spam. */
+  private gainAccum = 0;
+  private gainTimer: number | null = null;
+  coinGain(amount: number): void {
+    this.gainAccum += amount;
+    if (this.gainTimer !== null) return;
+    this.gainTimer = window.setTimeout(() => {
+      this.gainTimer = null;
+      const v = Math.round(this.gainAccum);
+      this.gainAccum = 0;
+      if (v <= 0) return;
+      const f = el('div', 'xp-float', `+${v} ${COIN}`);
+      this.root.append(f);
+      setTimeout(() => f.remove(), 1200);
+    }, 450);
+  }
+
 }
