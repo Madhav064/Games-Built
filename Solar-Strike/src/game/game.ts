@@ -880,4 +880,73 @@ export class Game {
     this.rig.shake(0.004);
   }
 
+  // ----------------------------------------------------------
+  // Destruction
+  // ----------------------------------------------------------
+  private destroyPlanet(): void {
+    const planet = this.planet;
+    if (!planet || this.destroyed) return;
+    this.destroyed = true;
+    this.stopFiring();
+    const killedBefore = this.population?.killed ?? 0;
+    this.population?.killAll();
+
+    this.shatter = new Shatter(planet, planet.material);
+    this.scene.add(this.shatter.group);
+    planet.group.visible = false;
+    this.clouds?.mesh.removeFromParent();
+    if (this.atmosphere) this.atmosphere.visible = false;
+    if (this.planetRings) this.planetRings.visible = false;
+
+    this.flashes.spawn(new THREE.Vector3(), 12, 0xfff4e0, 0.9);
+    this.flashes.spawn(new THREE.Vector3(), 7, 0xff7a20, 2.2);
+    this.flashes.spawn(new THREE.Vector3(), 18, 0xffa060, 1.4);
+    for (let k = 0; k < 1600; k++) {
+      const v = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
+      const sp = 0.6 + Math.random() * 3.2;
+      const r = Math.random() * WORLD_RADIUS;
+      const hot = Math.random();
+      this.particles.spawn({
+        x: v.x * r, y: v.y * r, z: v.z * r, vx: v.x * sp, vy: v.y * sp, vz: v.z * sp,
+        r: 0.9, g: 0.25 + hot * 0.5, b: 0.04 + hot * 0.2, size: 0.06 + Math.random() * 0.22,
+        life: 0.8 + Math.random() * 2, drag: 0.8, grow: 1.8,
+      });
+    }
+    const c = new THREE.Color();
+    for (let k = 0; k < 500; k++) {
+      const v = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
+      const pos = v.clone().multiplyScalar(WORLD_RADIUS * (0.6 + Math.random() * 0.4));
+      const gp = planet.worldToGrid(pos, new THREE.Vector3());
+      planet.debrisColor(gp.x, gp.y, gp.z, c);
+      this.debris.spawn(pos, v.multiplyScalar(0.8 + Math.random() * 2.4), VOXEL * (0.3 + Math.random() * 1.8), c, 1.5, 14);
+    }
+    this.debris.gravity = 0.4;
+    const toCam = this.camera.position.clone().normalize();
+    this.rings.spawn(this.scene, new THREE.Vector3(), toCam, WORLD_RADIUS * 5, 0xffb070, 3.2);
+    this.rig.shake(1.2);
+    this.rig.zoom(1.6);
+    sfx.explosion(1);
+    setTimeout(() => sfx.explosion(0.7), 180);
+
+    const bonus = 150;
+    this.awardXp(bonus);
+    const killed = this.population?.total ?? killedBefore;
+    // Skip the results if the player rebuilt or switched planets during the break-up.
+    const gen = this.planetGen;
+    setTimeout(() => {
+      if (gen !== this.planetGen) return;
+      this.events.onPlanetDestroyed?.({ planet: this.planetDef, killed, xp: this.xpEarned, shots: this.shotsThisPlanet });
+    }, 2600);
+    this.emitStats();
+  }
+
+  /** Superweapon-style instant destruction (used by debug / future weapons). */
+  forceDestroy(): void { this.destroyPlanet(); }
+
+  private awardXp(amount: number): void {
+    if (amount < 0.5) return;
+    this.xpEarned += amount;
+    this.events.onXp?.(amount);
+  }
+
 }
