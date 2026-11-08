@@ -165,3 +165,28 @@ html, body {
 @keyframes rise { from { opacity: 0; transform: translate(-50%, 10px); } 15% { opacity: 1; } to { opacity: 0; transform: translate(-50%, -50px); } }
 @keyframes pop { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: none; } }
 
+/* ---------- Small / portrait screens ---------- */
+@media (max-width: 640px) {
+  .hud-top { grid-template-columns: 1fr auto; }
+  .rank-chip { padding: 4px 8px 4px 6px; }
+  .rank-badge-wrap { width: 24px; height: 24px; }
+  .rank-name { font-size: 12px; }
+  .coin-chip { font-size: 13px; padding: 4px 10px; }
+  .hud-left { flex-direction: row; align-items: center; }
+  .shop-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .shop-card { padding: 10px; gap: 8px; }
+  .shop-art { height: 56px; }
+  .shop-name { font-size: 15px; }
+  .shop-blurb { font-size: 11px; }
+  .set-slider { width: 110px; }
+  .btn-menu { min-width: 130px; }
+  .planet-chip { grid-column: 1 / -1; grid-row: 2; justify-self: center; min-width: 0; width: 100%; padding: 6px 10px; }
+  .xp-bar { width: 70px; }
+  .icon-btn { width: 36px; height: 36px; border-radius: 10px; }
+  .icon-btn svg { width: 19px; height: 19px; }
+  .weapon-btn { width: 62px; height: 60px; }
+  .weapon-btn svg { width: 24px; height: 24px; }
+  .hint { display: none; }
+  .toasts { top: 120px; }
+}
+
