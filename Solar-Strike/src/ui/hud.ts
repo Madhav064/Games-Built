@@ -114,6 +114,19 @@ export class Hud {
   constructor(root: HTMLElement, private readonly h: HudHandlers) {
     this.root = root;
 
+    // ---- Planet select ----
+    this.planetsScreen = el('div', 'screen planets-screen hidden');
+    const pHead = el('div', 'panel-head', '<h2>Choose a target</h2>');
+    const pRight = el('div', 'panel-head-right');
+    const pClose = el('button', 'btn btn-ghost', 'Back');
+    pClose.onclick = () => this.h.onBackFromPlanets();
+    pRight.append(this.makeCoinChip(), pClose);
+    pHead.append(pRight);
+    this.planetGrid = el('div', 'planet-grid');
+    const pPanel = el('div', 'panel');
+    pPanel.append(pHead, this.planetGrid);
+    this.planetsScreen.append(pPanel);
+
     // ---- HUD ----
     this.hud = el('div', 'hud hidden');
     const top = el('div', 'hud-top');
@@ -160,5 +173,40 @@ export class Hud {
   showMenu(): void { this.menu.classList.remove('hidden'); this.hud.classList.add('hidden'); }
   hideMenu(): void { this.menu.classList.add('hidden'); }
   showHud(): void { this.hud.classList.remove('hidden'); }
+
+  showPlanets(currentId: string | null): void {
+    this.hideResults();
+    this.currentPlanetId = currentId;
+    this.renderPlanets();
+    this.planetsScreen.classList.remove('hidden');
+  }
+
+  get planetsOpen(): boolean { return !this.planetsScreen.classList.contains('hidden'); }
+
+  private renderPlanets(): void {
+    this.planetGrid.innerHTML = '';
+    for (const p of PLANETS) {
+      const locked = !this.ownedPlanets.has(p.id);
+      const card = el('button', `planet-card${locked ? ' locked' : ''}${p.id === this.currentPlanetId ? ' current' : ''}`);
+      const ball = el('div', 'planet-ball');
+      ball.style.background = planetSwatch(p);
+      if (p.rings) ball.classList.add('has-rings');
+      const info = el('div', 'planet-info');
+      info.append(
+        el('div', 'pc-name', p.name),
+        el('div', 'pc-blurb', p.blurb),
+        el('div', 'pc-pop', p.population > 0 ? `Population ${formatPeople(p.population)}` : 'Uninhabited'),
+      );
+      card.append(ball, info);
+      if (locked) {
+        const can = this.coins >= p.price;
+        card.append(el('div', `pc-lock${can ? ' can-buy' : ''}`, `${COIN} ${formatCoins(p.price)}`));
+      }
+      card.onclick = () => (locked ? this.h.onLockedPlanet(p) : this.h.onSelectPlanet(p));
+      this.planetGrid.append(card);
+    }
+  }
+
+  hidePlanets(): void { this.planetsScreen.classList.add('hidden'); }
 
 }
