@@ -139,3 +139,29 @@ html, body {
 .weapon-btn.trial::after { content: 'TRIAL'; position: absolute; top: -6px; right: -4px; font-size: 9px; font-weight: 900; background: var(--cyan); color: #031225; border-radius: 6px; padding: 1px 5px; }
 .hint { font-size: 11px; color: rgba(200,210,235,.5); text-align: center; }
 
+/* ---------- Results ---------- */
+.results-screen { background: radial-gradient(ellipse at center, rgba(2,3,9,0) 20%, rgba(2,3,9,.7) 100%); }
+.results-panel { max-width: 420px; text-align: center; animation: pop .35s cubic-bezier(.2,1.4,.4,1); }
+.results-title { font-size: 30px; font-weight: 900; letter-spacing: .1em; color: var(--accent); text-shadow: 0 0 22px rgba(255,120,40,.5); }
+.results-sub { color: var(--muted); margin-bottom: 16px; letter-spacing: .2em; text-transform: uppercase; font-size: 12px; }
+.results-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 10px; margin-bottom: 18px; }
+.stat { background: rgba(255,255,255,.05); border-radius: 12px; padding: 12px 8px; }
+.stat-value { font-size: 20px; font-weight: 900; }
+.stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; margin-top: 2px; }
+.results-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+
+.dialog-screen { background: rgba(2,3,9,.55); z-index: 8; }
+.dialog { max-width: 380px; text-align: center; }
+.dialog h3 { margin: 0 0 6px; }
+.dialog p { color: var(--muted); margin: 0 0 16px; line-height: 1.4; }
+
+/* ---------- Toasts ---------- */
+.toasts { z-index: 9; position: absolute; top: 76px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.toast { background: var(--panel); border: 1px solid var(--panel-border); padding: 10px 18px; border-radius: 999px; font-weight: 700; font-size: 14px; opacity: 0; transform: translateY(-8px); transition: opacity .3s, transform .3s; white-space: nowrap; }
+.toast.show { opacity: 1; transform: none; }
+.toast-level { border-color: var(--accent-2); color: var(--accent-2); box-shadow: 0 0 24px rgba(255,170,60,.3); }
+.xp-float { position: absolute; left: 50%; top: 42%; transform: translateX(-50%); font-weight: 900; font-size: 20px; color: var(--accent-2); text-shadow: 0 0 12px rgba(255,150,40,.7), 0 2px 4px #000; animation: rise 1.2s ease-out forwards; pointer-events: none; }
+
+@keyframes rise { from { opacity: 0; transform: translate(-50%, 10px); } 15% { opacity: 1; } to { opacity: 0; transform: translate(-50%, -50px); } }
+@keyframes pop { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: none; } }
+
