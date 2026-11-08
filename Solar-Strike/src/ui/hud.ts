@@ -73,3 +73,92 @@ function planetSwatch(p: PlanetDef): string {
   return `radial-gradient(circle at 32% 30%, ${hex(c.peak)} 0%, ${b} 22%, ${a} 55%, #05060c 100%)`;
 }
 
+export class Hud {
+  private readonly root: HTMLElement;
+  private readonly menu: HTMLElement;
+  private readonly planetsScreen: HTMLElement;
+  private readonly shop: HTMLElement;
+  private readonly settings: HTMLElement;
+  private readonly hud: HTMLElement;
+  private readonly results: HTMLElement;
+  private readonly toastBox: HTMLElement;
+  private readonly calloutBox: HTMLElement;
+  private readonly busy: HTMLElement;
+  private dialogCount = 0;
+  /** Called when a modal dialog opens or the last one closes (main pauses the game). */
+  onDialogChange: ((open: boolean) => void) | null = null;
+  private readonly rankChips: { badge: HTMLElement; name: HTMLElement; fill: HTMLElement }[] = [];
+  private readonly coinTexts: HTMLElement[] = [];
+  private readonly planetName: HTMLElement;
+  private readonly popText: HTMLElement;
+  private readonly integrityFill: HTMLElement;
+  private readonly weaponBar: HTMLElement;
+  private readonly weaponInfo: HTMLElement;
+  private readonly hint: HTMLElement;
+  private readonly btnSlow: HTMLButtonElement;
+  private readonly btnSpin: HTMLButtonElement;
+  private readonly planetGrid: HTMLElement;
+  private readonly shopGrid: HTMLElement;
+  private readonly shopTabs: HTMLButtonElement[] = [];
+  private readonly freeCoinsBtn: HTMLButtonElement;
+  private readonly menuBtnInSettings: HTMLButtonElement;
+  private shopTab: 'weapon' | 'planet' = 'weapon';
+  private selectedWeapon = WEAPONS[0].id;
+  private coins = 0;
+  private ownedWeapons = new Set<string>();
+  private ownedPlanets = new Set<string>();
+  private trialWeapons = new Set<string>();
+  private currentPlanetId: string | null = null;
+  private settingsState: Settings | null = null;
+
+  constructor(root: HTMLElement, private readonly h: HudHandlers) {
+    this.root = root;
+
+    // ---- HUD ----
+    this.hud = el('div', 'hud hidden');
+    const top = el('div', 'hud-top');
+    const left = el('div', 'hud-left');
+    const center = el('div', 'chip planet-chip');
+    this.planetName = el('div', 'planet-name', 'Earth');
+    this.popText = el('div', 'pop-text', '');
+    const integ = el('div', 'integrity');
+    this.integrityFill = el('div', 'integrity-fill');
+    integ.append(this.integrityFill);
+    center.append(this.planetName, this.popText, integ);
+
+    const tools = el('div', 'tools');
+    const mk = (icon: string, label: string) => {
+      const b = el('button', 'icon-btn', svg(icon));
+      b.title = label;
+      b.setAttribute('aria-label', label);
+      return b;
+    };
+    const btnPlanets = mk(ICONS.planets, 'Planets');
+    btnPlanets.onclick = () => this.h.onOpenPlanets();
+    const btnReset = mk(ICONS.reset, 'Rebuild planet');
+    btnReset.onclick = () => this.h.onReset();
+    this.btnSlow = mk(ICONS.slow, 'Slow motion');
+    this.btnSlow.onclick = () => this.btnSlow.classList.toggle('on', this.h.onToggleSlowMo());
+    this.btnSpin = mk(ICONS.spin, 'Planet spin');
+    this.btnSpin.classList.add('on');
+    this.btnSpin.onclick = () => this.btnSpin.classList.toggle('on', this.h.onToggleSpin());
+    const btnShop = mk(ICONS.shop, 'Shop');
+    btnShop.onclick = () => this.h.onOpenShop();
+    const btnSettings = mk(ICONS.gear, 'Settings');
+    btnSettings.onclick = () => this.h.onOpenSettings();
+    tools.append(btnPlanets, btnReset, this.btnSlow, this.btnSpin, btnShop, btnSettings);
+    top.append(left, center, tools);
+
+    const bottom = el('div', 'hud-bottom');
+    this.weaponInfo = el('div', 'weapon-info');
+    this.weaponBar = el('div', 'weapon-bar');
+    this.hint = el('div', 'hint', 'Click / tap to fire &middot; right-drag or two fingers to rotate &middot; scroll / pinch to zoom');
+    bottom.append(this.weaponInfo, this.weaponBar, this.hint);
+    this.hud.append(top, bottom);
+
+  // ---------------- Screens ----------------
+  showMenu(): void { this.menu.classList.remove('hidden'); this.hud.classList.add('hidden'); }
+  hideMenu(): void { this.menu.classList.add('hidden'); }
+  showHud(): void { this.hud.classList.remove('hidden'); }
+
+}
