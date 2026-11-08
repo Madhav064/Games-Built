@@ -169,6 +169,17 @@ export class Hud {
     bottom.append(this.weaponInfo, this.weaponBar, this.hint);
     this.hud.append(top, bottom);
 
+    // ---- Results ----
+    this.results = el('div', 'screen results-screen hidden');
+
+    this.toastBox = el('div', 'toasts');
+    this.calloutBox = el('div', 'callouts');
+    // Blocks all input while an ad is being requested (QA rule).
+    this.busy = el('div', 'screen busy-screen hidden', '<div class="spinner"></div>');
+    root.append(this.hud, this.menu, this.planetsScreen, this.results, this.shop, this.settings, this.calloutBox, this.toastBox, this.busy);
+    this.renderWeapons();
+  }
+
   // ---------------- Screens ----------------
   showMenu(): void { this.menu.classList.remove('hidden'); this.hud.classList.add('hidden'); }
   hideMenu(): void { this.menu.classList.add('hidden'); }
@@ -208,5 +219,46 @@ export class Hud {
   }
 
   hidePlanets(): void { this.planetsScreen.classList.add('hidden'); }
+
+  showResults(planet: PlanetDef, killed: number, coins: number, canDouble: boolean, shotsFired: number): void {
+    this.hidePlanets();
+    this.results.innerHTML = '';
+    const panel = el('div', 'panel results-panel');
+    panel.append(
+      el('div', 'results-title', 'PLANET DESTROYED'),
+      el('div', 'results-sub', planet.name),
+    );
+    const stats = el('div', 'results-stats');
+    stats.append(
+      this.stat(killed > 0 ? formatPeople(killed) : 'None', 'people lost'),
+      this.stat(`${COIN} +${formatCoins(coins)}`, 'coins earned'),
+    );
+    if (shotsFired > 0) stats.append(this.stat(shotsFired.toLocaleString(), 'shots fired'));
+    panel.append(stats);
+    const actions = el('div', 'results-actions');
+    if (canDouble) {
+      const dbl = el('button', 'btn btn-reward', `<span class="ad-tag">AD</span> 2x coins &amp; XP`);
+      dbl.onclick = () => { dbl.disabled = true; this.h.onDoubleRewards(); };
+      actions.append(dbl);
+    }
+    const again = el('button', 'btn btn-primary', 'Smash again');
+    again.onclick = () => this.h.onSmashAgain();
+    const choose = el('button', 'btn btn-ghost', 'Choose planet');
+    choose.onclick = () => this.h.onChoosePlanet();
+    const shop = el('button', 'btn btn-ghost', `${svg(ICONS.shop)} Shop`);
+    shop.onclick = () => this.h.onOpenShop();
+    actions.append(again, choose, shop);
+    panel.append(actions);
+    this.results.append(panel);
+    this.results.classList.remove('hidden');
+  }
+
+  hideResults(): void { this.results.classList.add('hidden'); }
+
+  private stat(value: string, label: string): HTMLElement {
+    const s = el('div', 'stat');
+    s.append(el('div', 'stat-value', value), el('div', 'stat-label', label));
+    return s;
+  }
 
 }
