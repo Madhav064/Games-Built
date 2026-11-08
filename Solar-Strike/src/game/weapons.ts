@@ -118,6 +118,19 @@ export const WEAPONS: WeaponDef[] = [
     icon: '<path d="M12 2v20M2 12h20M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="3" fill="currentColor"/>',
     beam: { width: 0.07, drillRate: 0, drillRadius: 3.4, heat: 0, color: 0x38e1ff, pitch: 1.6, isCryo: true },
   },
+  {
+    id: 'nuke',
+    name: 'Nuke',
+    category: 'Projectiles',
+    blurb: 'Small crater, enormous burning shockwave that sweeps cities away.',
+    price: 650,
+    color: '#9cff57',
+    icon: '<circle cx="12" cy="12" r="3" fill="currentColor"/><path d="M12 3 a9 9 0 0 1 7.8 4.5 L14.6 10.5 a3 3 0 0 0 -2.6 -1.5 Z M4.2 7.5 A9 9 0 0 1 12 3 M3.4 15.5 L8.6 12.5 a3 3 0 0 0 1.4 2.6 L7 20.2 A9 9 0 0 1 3.4 15.5 Z M20.6 15.5 A9 9 0 0 1 17 20.2 L14 15.1 a3 3 0 0 0 1.4 -2.6 Z" fill="currentColor"/>',
+    projectile: {
+      speed: 4.5, size: 0.12, model: 'warhead', trailColor: 0xfff080, cluster: 1, spread: 0, cooldown: 0.9,
+      impact: { crater: 4, heatRadius: 2.6, heat: 2.0, debris: 40, debrisSpeed: 1.0, fire: 300, flash: 4.5, shockwave: 34, shockKill: true, shockHeat: 0.3, shake: 0.55, boom: 0.75 },
+    },
+  },
 ];
 
 export function weaponById(id: string): WeaponDef {
