@@ -204,3 +204,54 @@ export class CloudLayer {
   }
 }
 
+/** Majestic planetary rings with concentric banding, Cassini division and sunlight response. */
+export function createRings(innerRadius: number, outerRadius: number, color: number, opacity: number, tilt = 0.45): THREE.Mesh {
+  const geo = new THREE.RingGeometry(innerRadius, outerRadius, 128, 4);
+  geo.rotateX(Math.PI / 2);
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uColor: { value: new THREE.Color(color) },
+      uOpacity: { value: opacity },
+      uInner: { value: innerRadius },
+      uOuter: { value: outerRadius },
+      uSun: { value: new THREE.Vector3(1, 0.3, -0.3).normalize() },
+    },
+    vertexShader: `
+      varying vec3 vLocal;
+      varying vec3 vWorldNormal;
+      void main() {
+        vLocal = position;
+        vWorldNormal = normalize(mat3(modelMatrix) * vec3(0.0, 1.0, 0.0));
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: `
+      uniform vec3 uColor;
+      uniform float uOpacity;
+      uniform float uInner;
+      uniform float uOuter;
+      uniform vec3 uSun;
+      varying vec3 vLocal;
+      varying vec3 vWorldNormal;
+      void main() {
+        float r = length(vLocal.xz);
+        float t = (r - uInner) / (uOuter - uInner);
+        if (t < 0.0 || t > 1.0) discard;
+        // Cassini division gap around t = 0.65
+        float gap = smoothstep(0.0, 0.035, abs(t - 0.65));
+        // Concentric ring grooves and density bands
+        float bands = 0.55 + 0.25 * sin(t * 85.0) + 0.15 * sin(t * 190.0) + 0.15 * cos(t * 35.0);
+        float edge = smoothstep(0.0, 0.04, t) * smoothstep(1.0, 0.96, t);
+        // Sunlight lighting from top/bottom
+        float lit = 0.4 + 0.6 * abs(dot(vWorldNormal, uSun));
+        float alpha = bands * gap * edge * uOpacity;
+        vec3 col = uColor * bands * lit;
+        gl_FragColor = vec4(col, alpha);
+      }`,
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.rotation.z = tilt;
+  return mesh;
+}
