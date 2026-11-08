@@ -274,4 +274,92 @@ export class Game {
     if (this.weapon.beam) this.beam.setColor(this.weapon.beam.color);
   }
 
+  // ----------------------------------------------------------
+  // Input
+  // ----------------------------------------------------------
+  private bindInput(): void {
+    const c = this.canvas;
+    c.addEventListener('contextmenu', e => e.preventDefault());
+    c.addEventListener('pointerdown', e => {
+      sfx.unlockAudio();
+      c.setPointerCapture(e.pointerId);
+      this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType, button: e.button });
+      const touches = [...this.pointers.values()].filter(p => p.type === 'touch');
+      if (touches.length >= 2) {
+        // Second finger: switch from firing to camera control.
+        this.stopFiring();
+        this.pinchDist = this.touchDistance();
+        return;
+      }
+      if (e.button === 0) {
+        this.setPointer(e.clientX, e.clientY);
+        this.firePointer = e.pointerId;
+        this.startFiring();
+      }
+    });
+    c.addEventListener('pointermove', e => {
+      const p = this.pointers.get(e.pointerId);
+      const touches = [...this.pointers.values()].filter(q => q.type === 'touch');
+      if (p && touches.length >= 2 && p.type === 'touch') {
+        // Two-finger orbit (average move) + pinch zoom.
+        this.rig.rotate((e.clientX - p.x) / 2, (e.clientY - p.y) / 2);
+        p.x = e.clientX; p.y = e.clientY;
+        const d = this.touchDistance();
+        if (this.pinchDist > 0 && d > 0) this.rig.zoom(this.pinchDist / d);
+        this.pinchDist = d;
+        return;
+      }
+      if (p && (p.button === 2 || p.button === 1)) {
+        this.rig.rotate(e.clientX - p.x, e.clientY - p.y);
+      }
+      if (p) { p.x = e.clientX; p.y = e.clientY; }
+      if (this.firePointer === e.pointerId || e.pointerType === 'mouse') this.setPointer(e.clientX, e.clientY);
+    });
+    const up = (e: PointerEvent) => {
+      this.pointers.delete(e.pointerId);
+      if (this.firePointer === e.pointerId) {
+        this.firePointer = null;
+        this.stopFiring();
+      }
+      if ([...this.pointers.values()].filter(p => p.type === 'touch').length < 2) this.pinchDist = 0;
+    };
+    c.addEventListener('pointerup', up);
+    c.addEventListener('pointercancel', up);
+    // Alt-tab or a system dialog while holding fire never sends pointerup: stop the beam.
+    window.addEventListener('blur', () => {
+      this.pointers.clear();
+      this.pinchDist = 0;
+      this.firePointer = null;
+      this.stopFiring();
+    });
+    c.addEventListener('wheel', e => {
+      e.preventDefault();
+      this.rig.zoom(Math.exp(e.deltaY * 0.0012));
+    }, { passive: false });
+    window.addEventListener('keydown', e => {
+      if (e.target instanceof HTMLInputElement) return; // settings sliders use arrow keys
+      // Keep arrows/space from scrolling the CrazyGames page around the game iframe.
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space'].includes(e.code)) e.preventDefault();
+      if (!this.inputEnabled || this.paused) return;
+      // e.code is the physical key, so WASD stays in the same place on AZERTY (ZQSD) etc.
+      const step = 40;
+      if (e.code === 'ArrowLeft' || e.code === 'KeyA') this.rig.rotate(-step, 0);
+      if (e.code === 'ArrowRight' || e.code === 'KeyD') this.rig.rotate(step, 0);
+      if (e.code === 'ArrowUp' || e.code === 'KeyW') this.rig.rotate(0, -step);
+      if (e.code === 'ArrowDown' || e.code === 'KeyS') this.rig.rotate(0, step);
+      if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') this.rig.zoom(0.9);
+      if (e.key === '-' || e.code === 'NumpadSubtract') this.rig.zoom(1.1);
+    });
+  }
+
+  private touchDistance(): number {
+    const t = [...this.pointers.values()].filter(p => p.type === 'touch');
+    if (t.length < 2) return 0;
+    return Math.hypot(t[0].x - t[1].x, t[0].y - t[1].y);
+  }
+
+  private setPointer(x: number, y: number): void {
+    this.pointerNdc.set((x / window.innerWidth) * 2 - 1, -(y / window.innerHeight) * 2 + 1);
+  }
+
 }
