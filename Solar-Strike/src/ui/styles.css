@@ -290,3 +290,14 @@ html, body {
   .set-row { padding: 6px 2px; }
 }
 
+/* ---------- Home button beside the rank badge ---------- */
+.hud-left-row { display: flex; align-items: center; gap: 6px; }
+.home-btn { color: var(--text); }
+@media (max-width: 640px) {
+  /* Phone: [home + rank + coins] / [tools in one row] / [planet card] */
+  .hud-top { grid-template-columns: 1fr; gap: 6px; }
+  .hud-left { grid-row: 1; flex-direction: row; align-items: center; }
+  .tools { grid-row: 2; justify-self: stretch; justify-content: space-between; flex-wrap: nowrap; }
+  .planet-chip { grid-row: 3; }
+  .toasts { top: 170px; }
+}

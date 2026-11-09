@@ -218,6 +218,14 @@ export class Hud {
     this.hud = el('div', 'hud hidden');
     const top = el('div', 'hud-top');
     const left = el('div', 'hud-left');
+    const leftRow = el('div', 'hud-left-row');
+    const btnHome = el('button', 'icon-btn home-btn', svg(ICONS.home));
+    btnHome.title = 'Main menu';
+    btnHome.setAttribute('aria-label', 'Main menu');
+    btnHome.onclick = () => this.h.onMainMenu();
+    leftRow.append(btnHome, this.makeRankChip());
+    left.append(leftRow, this.makeCoinChip());
+
     const center = el('div', 'chip planet-chip');
     this.planetName = el('div', 'planet-name', 'Earth');
     this.popText = el('div', 'pop-text', '');
