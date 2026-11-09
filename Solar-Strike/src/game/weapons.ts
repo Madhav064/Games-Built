@@ -190,6 +190,21 @@ export const WEAPONS: WeaponDef[] = [
     },
   },
   {
+    id: 'lance',
+    name: 'Core Lance',
+    category: 'Cosmic',
+    blurb: 'A tungsten lance that drills straight down and detonates in the core.',
+    price: 1800,
+    color: '#00e5ff',
+    icon: '<path d="M11 2 L13 2 L13 17 L15 17 L12 22 L9 17 L11 17 Z" fill="currentColor"/><line x1="6" y1="8" x2="6" y2="14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="18" y1="8" x2="18" y2="14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',
+    projectile: {
+      speed: 13, size: 0.16, model: 'rod', trailColor: 0x70f0ff, cluster: 1, spread: 0, cooldown: 1.3,
+      isKinetic: true,
+      impact: { crater: 3, heatRadius: 1.6, heat: 1.2, debris: 60, debrisSpeed: 1.6, fire: 120, flash: 3.0, shockwave: 12, shake: 0.5, boom: 0.6 },
+      lance: { depth: 0.9, radius: 2.4, cavity: 7.5 },
+    },
+  },
+  {
     id: 'black-hole',
     name: 'Black Hole',
     category: 'Cosmic',

@@ -881,6 +881,49 @@ export class Game {
     }
   }
 
+  /** Core Lance: drill a shaft toward the centre, then blow a cavity at the bottom. */
+  private updateLances(dt: number): void {
+    const planet = this.planet;
+    for (let i = this.lances.length - 1; i >= 0; i--) {
+      const L = this.lances[i];
+      if (!planet || this.destroyed) { this.lances.splice(i, 1); continue; }
+      L.progress = Math.min(L.depth, L.progress + dt * 55);
+      while (L.carved + 1.2 <= L.progress) {
+        L.carved += 1.2;
+        const p = L.g.clone().addScaledVector(L.dir, L.carved);
+        planet.carve(p.x, p.y, p.z, L.radius, 0.25);
+        planet.addHeat(p.x, p.y, p.z, L.radius * 2.2, 1.4);
+      }
+      const mouth = planet.gridToWorld(L.g, this.tmpA);
+      const n = this.tmpB.copy(mouth).normalize();
+      for (let k = 0; k < 3; k++) {
+        const v = this.randomHemisphere(n, 0.25).multiplyScalar(0.8 + Math.random());
+        this.particles.spawn({ x: mouth.x, y: mouth.y, z: mouth.z, vx: v.x, vy: v.y, vz: v.z, r: 0.5, g: 0.9, b: 1, size: 0.05 + Math.random() * 0.06, life: 0.35, drag: 1.5 });
+      }
+      if (L.progress >= L.depth) {
+        const end = L.g.clone().addScaledVector(L.dir, L.depth);
+        planet.carve(end.x, end.y, end.z, L.cavity, 0.5);
+        planet.addHeat(end.x, end.y, end.z, L.cavity * 1.8, 2.2);
+        // The blast escapes up the shaft.
+        this.flashes.spawn(mouth, 3.2, 0x80f0ff, 0.6);
+        this.flashes.spawn(mouth, 1.6, 0xffffff, 0.3);
+        for (let k = 0; k < 160; k++) {
+          const v = this.randomHemisphere(n, 0.35);
+          const sp = 0.6 + Math.random() * 2.2;
+          const hot = Math.random();
+          this.particles.spawn({
+            x: mouth.x, y: mouth.y, z: mouth.z, vx: v.x * sp, vy: v.y * sp, vz: v.z * sp,
+            r: 1, g: 0.5 + hot * 0.4, b: 0.2 + hot * 0.5, size: 0.06 + Math.random() * 0.14,
+            life: 0.6 + Math.random() * 0.8, drag: 1.6, grow: 1.8,
+          });
+        }
+        this.rig.shake(0.6);
+        sfx.explosion(0.8);
+        this.lances.splice(i, 1);
+      }
+    }
+  }
+
   private randomHemisphere(n: THREE.Vector3, spread: number): THREE.Vector3 {
     const v = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
     if (v.dot(n) < 0) v.negate();
