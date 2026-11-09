@@ -189,6 +189,31 @@ export class Hud {
     sPanel.append(sHead, sBar, this.shopGrid);
     this.shop.append(sPanel);
 
+    // ---- Settings ----
+    this.settings = el('div', 'screen overlay-screen hidden');
+    const stPanel = el('div', 'panel settings-panel');
+    const stHead = el('div', 'panel-head', '<h2>Settings</h2>');
+    const stClose = el('button', 'icon-btn', svg(ICONS.close));
+    stClose.setAttribute('aria-label', 'Close settings');
+    stClose.onclick = () => this.h.onCloseSettings();
+    stHead.append(stClose);
+    const stBody = el('div', 'settings-body');
+    stBody.append(
+      this.slider('Master volume', 'masterVolume'),
+      this.slider('Effects volume', 'sfxVolume'),
+      this.toggle('Mute all sound', 'muted'),
+      this.toggle('Screen shake', 'screenShake'),
+      this.toggle('Show control hints', 'hints'),
+    );
+    const stFoot = el('div', 'settings-foot');
+    this.menuBtnInSettings = el('button', 'btn btn-ghost', `${svg(ICONS.home)} Main menu`);
+    this.menuBtnInSettings.onclick = () => this.h.onMainMenu();
+    const resetBtn = el('button', 'btn btn-danger', 'Reset progress');
+    resetBtn.onclick = () => this.h.onResetProgress();
+    stFoot.append(this.menuBtnInSettings, resetBtn);
+    stPanel.append(stHead, stBody, stFoot);
+    this.settings.append(stPanel);
+
     // ---- HUD ----
     this.hud = el('div', 'hud hidden');
     const top = el('div', 'hud-top');
@@ -263,6 +288,53 @@ export class Hud {
     chip.append(t);
     this.coinTexts.push(t);
     return chip;
+  }
+
+  private slider(label: string, key: 'masterVolume' | 'sfxVolume'): HTMLElement {
+    const row = el('label', 'set-row');
+    const input = el('input', 'set-slider');
+    input.type = 'range'; input.min = '0'; input.max = '100'; input.step = '1';
+    input.dataset.key = key;
+    const val = el('span', 'set-val', '');
+    input.oninput = () => {
+      if (!this.settingsState) return;
+      this.settingsState[key] = Number(input.value) / 100;
+      val.textContent = `${input.value}%`;
+      this.h.onSettingsChange({ ...this.settingsState });
+    };
+    row.append(el('span', 'set-label', label), input, val);
+    return row;
+  }
+
+  private toggle(label: string, key: 'muted' | 'screenShake' | 'hints'): HTMLElement {
+    const row = el('div', 'set-row');
+    const btn = el('button', 'switch');
+    btn.dataset.key = key;
+    btn.setAttribute('role', 'switch');
+    btn.setAttribute('aria-label', label);
+    btn.onclick = () => {
+      if (!this.settingsState) return;
+      this.settingsState[key] = !this.settingsState[key];
+      this.syncSettingsControls();
+      this.h.onSettingsChange({ ...this.settingsState });
+    };
+    row.append(el('span', 'set-label', label), btn);
+    return row;
+  }
+
+  private syncSettingsControls(): void {
+    const s = this.settingsState;
+    if (!s) return;
+    this.settings.querySelectorAll<HTMLInputElement>('.set-slider').forEach(i => {
+      const v = Math.round(s[i.dataset.key as 'masterVolume' | 'sfxVolume'] * 100);
+      i.value = String(v);
+      (i.nextElementSibling as HTMLElement).textContent = `${v}%`;
+    });
+    this.settings.querySelectorAll<HTMLButtonElement>('.switch').forEach(b => {
+      const on = s[b.dataset.key as 'muted' | 'screenShake' | 'hints'];
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-checked', String(on));
+    });
   }
 
   // ---------------- Screens ----------------
@@ -353,6 +425,15 @@ export class Hud {
     }
   }
 
+  showSettings(s: Settings, inGame: boolean): void {
+    this.settingsState = { ...s };
+    this.syncSettingsControls();
+    this.menuBtnInSettings.classList.toggle('hidden', !inGame);
+    this.settings.classList.remove('hidden');
+  }
+  hideSettings(): void { this.settings.classList.add('hidden'); }
+  get settingsOpen(): boolean { return !this.settings.classList.contains('hidden'); }
+
   showResults(planet: PlanetDef, killed: number, coins: number, canDouble: boolean, shotsFired: number): void {
     this.hidePlanets();
     this.results.innerHTML = '';
@@ -433,6 +514,11 @@ export class Hud {
     this.renderWeapons();
     if (this.shopOpen) this.renderShop();
     if (this.planetsOpen) this.renderPlanets();
+  }
+
+  applySettings(s: Settings): void {
+    this.hint.classList.toggle('hidden', !s.hints);
+    this.weaponInfo.classList.toggle('hidden', !s.hints);
   }
 
   grantTrial(id: string): void { this.trialWeapons.add(id); this.renderWeapons(); }
