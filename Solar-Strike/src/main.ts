@@ -337,6 +337,19 @@ async function boot(): Promise<void> {
   sdk.onPlatformSettingsChange(() => applySettings(progress.state.settings));
   sdk.onAdPlayback(playing => { adPlaying = playing; sfx.setAdMuted(playing); refreshPause(); });
 
+  // Dev-only test helpers. `import.meta.env.DEV` is false in `npm run build`, so none of
+  // this ships to CrazyGames.
+  if (import.meta.env.DEV) {
+    const giveCoins = (n: number) => { progress.addCoins(n); progress.saveNow(); syncWallet(); hud.toast(`DEV: +${fmt(n)} ${COIN}`, 'xp'); };
+    Object.assign(window, { __game: game, __hud: hud, __enter: enterPlanet, __progress: progress, __sync: syncWallet, __coins: giveCoins });
+    // http://localhost:5191/?coins=50000 adds coins on load.
+    const devCoins = Number(new URLSearchParams(location.search).get('coins'));
+    if (devCoins > 0) {
+      giveCoins(devCoins);
+      history.replaceState(null, '', location.pathname); // so a refresh doesn't add them again
+    }
+  }
+
   syncWallet();
   // A planet spins behind the main menu.
   game.setInputEnabled(false);
