@@ -643,6 +643,25 @@ export class Game {
     sfx.whoosh(0.35, 1.6);
   }
 
+  /** Asteroid: rocks thrown out of the crater fall back and make smaller craters. */
+  private throwEjecta(g: THREE.Vector3, e: NonNullable<ProjectileSpec['ejecta']>): void {
+    const planet = this.planet!;
+    const [t1, t2] = this.tangents(g);
+    const startW = planet.gridToWorld(g, new THREE.Vector3());
+    const normalW = startW.clone().normalize();
+    const impact = { ...EJECTA_SPEC.impact, crater: e.crater };
+    for (let k = 0; k < e.count; k++) {
+      const a = Math.random() * Math.PI * 2;
+      const range = e.minRange + Math.random() * (e.maxRange - e.minRange);
+      const target = this.surfacePoint(g.clone().addScaledVector(t1, Math.cos(a) * range).addScaledVector(t2, Math.sin(a) * range));
+      if (!target) continue;
+      const start = startW.clone().addScaledVector(normalW, 0.15);
+      const toTarget = planet.gridToWorld(target, new THREE.Vector3()).sub(start).normalize();
+      const vel = normalW.clone().multiplyScalar(1.6 + Math.random() * 0.8).addScaledVector(toTarget, 0.6);
+      this.launch(EJECTA_SPEC, impact, start, vel, target, { homing: 1.3, armAt: 0.4, size: EJECTA_SPEC.size * (0.7 + Math.random() * 0.6) });
+    }
+  }
+
   private spawnSingularity(pos: THREE.Vector3, gridPos: THREE.Vector3): void {
     const grp = new THREE.Group();
     grp.position.copy(pos);
