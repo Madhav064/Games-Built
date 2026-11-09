@@ -789,6 +789,30 @@ export class Game {
     sfx.explosion(s.boom);
   }
 
+  /** Ice shards, a cold flash and a callout when frozen ground breaks. */
+  private shatterFx(world: THREE.Vector3, normal: THREE.Vector3, size: number): void {
+    for (let k = 0; k < 90; k++) {
+      const v = this.randomHemisphere(normal, 1.0);
+      const sp = 0.5 + Math.random() * 1.6;
+      this.particles.spawn({
+        x: world.x, y: world.y, z: world.z, vx: v.x * sp, vy: v.y * sp, vz: v.z * sp,
+        r: 0.6, g: 0.92, b: 1, size: 0.04 + Math.random() * 0.08, life: 0.5 + Math.random() * 0.6, drag: 1.6, gravity: 0.4,
+      });
+    }
+    const ice = new THREE.Color().setRGB(0.75, 0.92, 1);
+    for (let k = 0; k < 24; k++) {
+      const v = this.randomHemisphere(normal, 0.8).multiplyScalar(0.6 + Math.random());
+      this.debris.spawn(world.clone().addScaledVector(normal, 0.04), v, VOXEL * (0.3 + Math.random() * 0.8) * Math.min(2, size / 5), ice, 0, 5);
+    }
+    this.flashes.spawn(world, Math.min(4, size * 0.25), 0x9ae8ff, 0.4);
+    sfx.freezeBurst();
+    const now = performance.now();
+    if (now - this.shatterCalloutAt > 900) {
+      this.shatterCalloutAt = now;
+      this.events.onCallout?.('SHATTER!');
+    }
+  }
+
   private randomHemisphere(n: THREE.Vector3, spread: number): THREE.Vector3 {
     const v = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
     if (v.dot(n) < 0) v.negate();
