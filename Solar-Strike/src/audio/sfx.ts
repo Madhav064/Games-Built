@@ -46,6 +46,12 @@ export function setAdMuted(m: boolean): void { adMuted = m; applyMute(); }
 /** Call from a user gesture so browsers allow audio. */
 export function unlockAudio(): void { ensure(); }
 
+// iOS can suspend audio (calls, app switches); it only resumes inside a user gesture,
+// so retry on every tap/click anywhere, not just on the canvas.
+for (const type of ['pointerdown', 'touchend', 'click', 'keydown']) {
+  window.addEventListener(type, () => { if (ctx && ctx.state !== 'running') void ctx.resume(); }, { capture: true, passive: true });
+}
+
 function noise(c: AudioContext): AudioBufferSourceNode {
   const src = c.createBufferSource();
   src.buffer = noiseBuf;
