@@ -163,6 +163,32 @@ export class Hud {
     pPanel.append(pHead, this.planetGrid);
     this.planetsScreen.append(pPanel);
 
+    // ---- Shop ----
+    this.shop = el('div', 'screen overlay-screen hidden');
+    const sPanel = el('div', 'panel shop-panel');
+    const sHead = el('div', 'panel-head', '<h2>Shop</h2>');
+    const sRight = el('div', 'panel-head-right');
+    const sClose = el('button', 'icon-btn', svg(ICONS.close));
+    sClose.setAttribute('aria-label', 'Close shop');
+    sClose.onclick = () => this.h.onCloseShop();
+    sRight.append(this.makeCoinChip(), sClose);
+    sHead.append(sRight);
+    const tabs = el('div', 'tabs');
+    for (const [kind, label] of [['weapon', 'Weapons'], ['planet', 'Planets']] as const) {
+      const t = el('button', 'tab', label);
+      t.onclick = () => { this.shopTab = kind; this.renderShop(); };
+      t.dataset.kind = kind;
+      this.shopTabs.push(t);
+      tabs.append(t);
+    }
+    this.freeCoinsBtn = el('button', 'btn btn-reward btn-small', `<span class="ad-tag">AD</span> Free ${COIN} 150`);
+    this.freeCoinsBtn.onclick = () => this.h.onFreeCoins();
+    const sBar = el('div', 'shop-bar');
+    sBar.append(tabs, this.freeCoinsBtn);
+    this.shopGrid = el('div', 'shop-grid');
+    sPanel.append(sHead, sBar, this.shopGrid);
+    this.shop.append(sPanel);
+
     // ---- HUD ----
     this.hud = el('div', 'hud hidden');
     const top = el('div', 'hud-top');
@@ -278,6 +304,54 @@ export class Hud {
   }
 
   hidePlanets(): void { this.planetsScreen.classList.add('hidden'); }
+
+  showShop(tab?: 'weapon' | 'planet'): void {
+    if (tab) this.shopTab = tab;
+    this.renderShop();
+    this.shop.classList.remove('hidden');
+  }
+
+  hideShop(): void { this.shop.classList.add('hidden'); }
+  get shopOpen(): boolean { return !this.shop.classList.contains('hidden'); }
+
+  private renderShop(): void {
+    for (const t of this.shopTabs) t.classList.toggle('active', t.dataset.kind === this.shopTab);
+    this.shopGrid.innerHTML = '';
+    const items = this.shopTab === 'weapon'
+      ? WEAPONS.map(w => ({ id: w.id, name: w.name, blurb: w.blurb, price: w.price, owned: this.ownedWeapons.has(w.id), tag: w.category, weapon: w, planet: null as PlanetDef | null }))
+      : PLANETS.map(p => ({ id: p.id, name: p.name, blurb: p.blurb, price: p.price, owned: this.ownedPlanets.has(p.id), tag: p.population > 0 ? 'Inhabited' : 'Uninhabited', weapon: null as WeaponDef | null, planet: p }));
+    // Owned items last so the next thing to buy is at the top.
+    items.sort((a, b) => Number(a.owned) - Number(b.owned) || a.price - b.price);
+    for (const it of items) {
+      const card = el('div', `shop-card${it.owned ? ' owned' : ''}`);
+      const art = el('div', 'shop-art');
+      if (it.weapon) {
+        art.style.setProperty('--wc', it.weapon.color);
+        art.innerHTML = svg(it.weapon.icon);
+      } else if (it.planet) {
+        const ball = el('div', 'planet-ball');
+        ball.style.background = planetSwatch(it.planet);
+        if (it.planet.rings) ball.classList.add('has-rings');
+        art.append(ball);
+      }
+      const info = el('div', 'shop-info');
+      info.append(el('div', 'shop-tag', it.tag), el('div', 'shop-name', it.name), el('div', 'shop-blurb', it.blurb));
+      const foot = el('div', 'shop-foot');
+      if (it.owned) {
+        foot.append(el('div', 'owned-badge', `${svg(ICONS.check)} Owned`));
+      } else {
+        const can = this.coins >= it.price;
+        const buy = el('button', `btn btn-buy${can ? '' : ' cant'}`, `${COIN} ${formatCoins(it.price)}`);
+        buy.disabled = !can;
+        buy.title = can ? `Buy ${it.name}` : `You need ${formatCoins(it.price - this.coins)} more coins`;
+        buy.onclick = () => this.h.onBuy(this.shopTab, it.id);
+        foot.append(buy);
+        if (!can) foot.append(el('div', 'need', `${formatCoins(it.price - this.coins)} more`));
+      }
+      card.append(art, info, foot);
+      this.shopGrid.append(card);
+    }
+  }
 
   showResults(planet: PlanetDef, killed: number, coins: number, canDouble: boolean, shotsFired: number): void {
     this.hidePlanets();
