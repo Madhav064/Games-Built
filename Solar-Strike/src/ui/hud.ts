@@ -422,6 +422,31 @@ export class Hud {
     if (changed) this.refreshPrices();
   }
 
+  setOwned(weapons: string[], planets: string[]): void {
+    this.ownedWeapons = new Set(weapons);
+    this.ownedPlanets = new Set(planets);
+    this.refreshPrices();
+  }
+
+  /** Re-render anything that shows prices or ownership. */
+  private refreshPrices(): void {
+    this.renderWeapons();
+    if (this.shopOpen) this.renderShop();
+    if (this.planetsOpen) this.renderPlanets();
+  }
+
+  grantTrial(id: string): void { this.trialWeapons.add(id); this.renderWeapons(); }
+
+  /** Ends weapon trials. Returns true if the selected weapon was a trial and fell back to the first weapon. */
+  clearTrials(): boolean {
+    this.trialWeapons.clear();
+    const sel = WEAPONS.find(w => w.id === this.selectedWeapon);
+    const lost = !!sel && !this.isWeaponAvailable(sel);
+    if (lost) this.selectedWeapon = WEAPONS[0].id;
+    this.renderWeapons();
+    return lost;
+  }
+
   selectWeapon(id: string): void {
     this.selectedWeapon = id;
     this.renderWeapons();
