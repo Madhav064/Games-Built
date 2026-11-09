@@ -74,6 +74,33 @@ async function boot(): Promise<void> {
   const closeOverlay = (hide: () => void) => { sfx.click(); hide(); resumeIfPlaying(); };
 
   // ---------------------------------------------------------------------------
+  // Ads: input is blocked by a spinner until the SDK answers.
+  // ---------------------------------------------------------------------------
+  const withSpinner = async <T,>(fn: () => Promise<T>): Promise<T> => {
+    hud.setBusy(true);
+    try { return await fn(); } finally { hud.setBusy(false); }
+  };
+
+  const breakAd = async (): Promise<void> => {
+    if (rewardedThisBreak) return;
+    const now = performance.now();
+    if (now - SESSION_START < AD_FIRST_DELAY || now - lastBreakAd < AD_COOLDOWN) return;
+    if (!sdk.isOnCrazyGames()) return;
+    lastBreakAd = now;
+    await withSpinner(() => sdk.requestBreakAd());
+  };
+
+  const rewardedAd = async (): Promise<boolean> => {
+    const ok = await withSpinner(() => sdk.requestRewardedAd());
+    if (!ok) hud.toast(sdk.canShowRewarded() ? 'No ad available right now. Try again later.' : 'Ads are not available right now');
+    return ok;
+  };
+
+  const freeCoinsLeft = () => Math.max(0, (progress.state.freeCoinsAt + FREE_COINS_COOLDOWN - Date.now()) / 1000);
+  const refreshFreeCoins = () => hud.setFreeCoins(sdk.canShowRewarded(), freeCoinsLeft(), FREE_COINS);
+  window.setInterval(() => { if (hud.shopOpen) refreshFreeCoins(); }, 1000);
+
+  // ---------------------------------------------------------------------------
   // Flow
   // ---------------------------------------------------------------------------
   const enterPlanet = async (id: string) => {

@@ -383,6 +383,19 @@ export class Hud {
     this.shop.classList.remove('hidden');
   }
 
+  /** Free-coins rewarded button: hidden when ads can't play, counts down while on cooldown. */
+  setFreeCoins(visible: boolean, secondsLeft: number, amount: number): void {
+    this.freeCoinsBtn.classList.toggle('hidden', !visible);
+    const cooling = secondsLeft > 0;
+    this.freeCoinsBtn.disabled = cooling;
+    const t = `${Math.floor(secondsLeft / 60)}:${String(Math.ceil(secondsLeft) % 60).padStart(2, '0')}`;
+    this.freeCoinsBtn.innerHTML = cooling
+      ? `Free ${COIN} ${amount} in ${t}`
+      : `<span class="ad-tag">AD</span> Free ${COIN} ${amount}`;
+  }
+
+  setBusy(on: boolean): void { this.busy.classList.toggle('hidden', !on); }
+
   hideShop(): void { this.shop.classList.add('hidden'); }
   get shopOpen(): boolean { return !this.shop.classList.contains('hidden'); }
 
