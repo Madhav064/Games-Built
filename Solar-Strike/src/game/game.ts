@@ -813,6 +813,38 @@ export class Game {
     }
   }
 
+  /** Plasma Mortar lava: keeps burning, melts a basin and spreads for a few seconds. */
+  private updateLava(dt: number): void {
+    const planet = this.planet;
+    for (let i = this.lavaPools.length - 1; i >= 0; i--) {
+      const L = this.lavaPools[i];
+      L.t += dt;
+      L.tick -= dt;
+      if (!planet || this.destroyed || L.t >= L.dur) { this.lavaPools.splice(i, 1); continue; }
+      const grow = Math.min(1, L.t / (L.dur * 0.6));
+      const r = L.radius * (0.35 + 0.65 * grow);
+      if (L.tick <= 0) {
+        L.tick = 0.12;
+        planet.addHeat(L.g.x, L.g.y, L.g.z, r, 0.45);
+        planet.carve(L.g.x, L.g.y, L.g.z, r * 0.42, 0.6);
+        this.population?.blast(L.g.x, L.g.y, L.g.z, r * 0.9);
+      }
+      // Bubbling sparks across the pool.
+      const w = planet.gridToWorld(L.g, this.tmpA);
+      const n = this.tmpB.copy(w).normalize();
+      for (let k = 0; k < 2; k++) {
+        const off = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5);
+        off.addScaledVector(n, -off.dot(n)).normalize().multiplyScalar(Math.random() * r * VOXEL);
+        const v = this.randomHemisphere(n, 0.5).multiplyScalar(0.15 + Math.random() * 0.3);
+        this.particles.spawn({
+          x: w.x + off.x, y: w.y + off.y, z: w.z + off.z, vx: v.x, vy: v.y, vz: v.z,
+          r: 1, g: 0.45 + Math.random() * 0.3, b: 0.1, size: 0.05 + Math.random() * 0.07,
+          life: 0.5 + Math.random() * 0.4, drag: 1.2, gravity: 0.25, grow: 1.5,
+        });
+      }
+    }
+  }
+
   private randomHemisphere(n: THREE.Vector3, spread: number): THREE.Vector3 {
     const v = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
     if (v.dot(n) < 0) v.negate();

@@ -109,6 +109,20 @@ export const WEAPONS: WeaponDef[] = [
     },
   },
   {
+    id: 'mortar',
+    name: 'Plasma Mortar',
+    category: 'Energy',
+    blurb: 'Lobs molten plasma. Leaves lava pools that keep burning and spreading.',
+    price: 300,
+    color: '#ff8a30',
+    icon: '<path d="M4 20 Q9 4 18 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2 2.4" stroke-linecap="round"/><circle cx="18" cy="9" r="3.4" fill="currentColor"/><path d="M3 21h8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>',
+    projectile: {
+      speed: 3.6, size: 0.1, model: 'blob', trailColor: 0xff8a30, cluster: 1, spread: 0, cooldown: 0.7, homing: 1.6,
+      impact: { crater: 2.5, heatRadius: 2, heat: 2.2, debris: 10, debrisSpeed: 0.8, fire: 120, flash: 1.6, shockwave: 0, shake: 0.15, boom: 0.3 },
+      lava: { radius: 9, duration: 4.5 },
+    },
+  },
+  {
     id: 'cryo',
     name: 'Cryo Beam',
     category: 'Energy',
