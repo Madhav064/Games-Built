@@ -132,6 +132,24 @@ export class Hud {
   constructor(root: HTMLElement, private readonly h: HudHandlers) {
     this.root = root;
 
+    // ---- Main menu ----
+    this.menu = el('div', 'screen menu-screen');
+    const menuTop = el('div', 'menu-top');
+    menuTop.append(this.makeRankChip(), this.makeCoinChip());
+    const menuCenter = el('div', 'menu-center');
+    const logo = el('h1', 'logo', `<span>${GAME_NAME.split(' ')[0]}</span> ${GAME_NAME.split(' ').slice(1).join(' ')}`);
+    const tag = el('p', 'tagline', 'Planet destruction sandbox');
+    const play = el('button', 'btn btn-primary btn-big', `${svg(ICONS.play)} PLAY`);
+    play.onclick = () => this.h.onPlay();
+    const row = el('div', 'menu-row');
+    const shopBtn = el('button', 'btn btn-menu', `${svg(ICONS.shop)}<span>Shop</span>`);
+    shopBtn.onclick = () => this.h.onOpenShop();
+    const setBtn = el('button', 'btn btn-menu', `${svg(ICONS.gear)}<span>Settings</span>`);
+    setBtn.onclick = () => this.h.onOpenSettings();
+    row.append(shopBtn, setBtn);
+    menuCenter.append(logo, tag, play, row);
+    this.menu.append(menuTop, menuCenter);
+
     // ---- Planet select ----
     this.planetsScreen = el('div', 'screen planets-screen hidden');
     const pHead = el('div', 'panel-head', '<h2>Choose a target</h2>');
