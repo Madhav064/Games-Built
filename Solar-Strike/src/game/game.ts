@@ -1057,6 +1057,18 @@ export class Game {
     });
   }
 
+  /**
+   * 1 = intact, 0 = about to break apart. The planet breaks at 60 % mass OR 80 % core,
+   * so the bar follows whichever is closer to its limit.
+   */
+  get health(): number {
+    const p = this.planet;
+    if (!p) return 1;
+    const mass = (p.integrity - 0.6) / 0.4;
+    const core = (p.coreIntegrity - 0.8) / 0.2;
+    return Math.max(0, Math.min(1, mass, core));
+  }
+
   private resize(): void {
     const w = window.innerWidth, h = window.innerHeight;
     this.camera.aspect = w / h;
