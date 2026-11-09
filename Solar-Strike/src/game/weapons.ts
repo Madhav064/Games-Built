@@ -146,6 +146,19 @@ export const WEAPONS: WeaponDef[] = [
     },
   },
   {
+    id: 'meteors',
+    name: 'Meteor Storm',
+    category: 'Cosmic',
+    blurb: 'Hold to rain meteors wherever you point.',
+    price: 850,
+    color: '#ff8c42',
+    icon: '<circle cx="6" cy="4" r="1.8" fill="currentColor"/><circle cx="12" cy="7" r="2.2" fill="currentColor"/><circle cx="18" cy="5" r="1.5" fill="currentColor"/><circle cx="9" cy="13" r="1.6" fill="currentColor"/><circle cx="16" cy="15" r="1.4" fill="currentColor"/><path d="M6 4l-2 4M12 7l-1 5M18 5l-1 5M9 13l-1 4M16 15l0 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".5"/>',
+    projectile: {
+      speed: 5, size: 0.12, model: 'rock', trailColor: 0xff6a20, cluster: 1, spread: 4, cooldown: 0.11,
+      impact: { crater: 2.8, heatRadius: 1.6, heat: 1.3, debris: 10, debrisSpeed: 0.9, fire: 50, flash: 1.1, shockwave: 0, shake: 0.08, boom: 0.18 },
+    },
+  },
+  {
     id: 'asteroid',
     name: 'Asteroid',
     category: 'Cosmic',
