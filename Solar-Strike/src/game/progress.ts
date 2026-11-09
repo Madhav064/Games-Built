@@ -73,3 +73,85 @@ export function rankFromXp(xp: number): Rank {
   return RANKS[i];
 }
 
+export class Progress {
+  state: SaveState;
+  private saveTimer: number | null = null;
+
+  constructor() {
+    const s = defaults();
+    try {
+      const raw = loadData('save');
+      if (raw) {
+        const saved = JSON.parse(raw) as Partial<SaveState> & { muted?: boolean };
+        Object.assign(s, saved);
+        s.settings = { ...DEFAULT_SETTINGS, ...(saved.settings ?? {}) };
+        if (saved.muted !== undefined && !saved.settings) s.settings.muted = saved.muted; // pre-shop saves
+        // Free items are always owned, even ones added after the save was made.
+        for (const w of WEAPONS) if (w.price === 0 && !s.ownedWeapons.includes(w.id)) s.ownedWeapons.push(w.id);
+        for (const p of PLANETS) if (p.price === 0 && !s.ownedPlanets.includes(p.id)) s.ownedPlanets.push(p.id);
+      }
+    } catch { /* corrupt save: start fresh */ }
+    this.state = s;
+  }
+
+  get rank(): Rank { return rankFromXp(this.state.xp); }
+
+  /** 0..1 progress toward the next rank (1 at the top rank). */
+  get rankProgress(): number {
+    const r = this.rank;
+    if (r.index >= RANKS.length - 1) return 1;
+    const a = xpForRank(r.index), b = xpForRank(r.index + 1);
+    return (this.state.xp - a) / (b - a);
+  }
+
+  /** Adds XP. Returns the new rank if the player ranked up, else null. */
+  addXp(amount: number): Rank | null {
+    if (amount <= 0) return null;
+    const before = this.rank.index;
+    this.state.xp += Math.round(amount);
+    this.queueSave();
+    const after = this.rank;
+    return after.index > before ? after : null;
+  }
+
+  addCoins(amount: number): void {
+    if (amount <= 0) return;
+    this.state.coins += Math.round(amount);
+    this.queueSave();
+  }
+
+  ownsWeapon(id: string): boolean { return this.state.ownedWeapons.includes(id); }
+  ownsPlanet(id: string): boolean { return this.state.ownedPlanets.includes(id); }
+
+  /** Spend coins on an item. Returns false if the player can't afford it. */
+  buy(kind: 'weapon' | 'planet', id: string, price: number): boolean {
+    const list = kind === 'weapon' ? this.state.ownedWeapons : this.state.ownedPlanets;
+    if (list.includes(id)) return true;
+    if (this.state.coins < price) return false;
+    this.state.coins -= price;
+    list.push(id);
+    this.saveNow();
+    return true;
+  }
+
+  /** Wipe progress but keep settings. */
+  reset(): void {
+    const settings = this.state.settings;
+    this.state = defaults();
+    this.state.settings = settings;
+    this.saveNow();
+  }
+
+  queueSave(): void {
+    if (this.saveTimer !== null) return;
+    this.saveTimer = window.setTimeout(() => {
+      this.saveTimer = null;
+      saveData('save', JSON.stringify(this.state));
+    }, 800);
+  }
+
+  saveNow(): void {
+    if (this.saveTimer !== null) { clearTimeout(this.saveTimer); this.saveTimer = null; }
+    saveData('save', JSON.stringify(this.state));
+  }
+}
