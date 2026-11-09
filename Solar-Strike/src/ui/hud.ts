@@ -53,11 +53,29 @@ const ICONS = {
 
 const svg = (body: string) => `<svg viewBox="0 0 24 24" aria-hidden="true">${body}</svg>`;
 
+/** Gold coin icon (inline, sized by CSS). */
+export const COIN = '<svg class="coin" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#f5b52a"/><circle cx="12" cy="12" r="10" fill="none" stroke="#a8670c" stroke-width="1.6"/><circle cx="12" cy="12" r="6.4" fill="none" stroke="#ffe58a" stroke-width="1.6"/><path d="M12 8.2v7.6" stroke="#a8670c" stroke-width="2" stroke-linecap="round"/></svg>';
+
+/** Rank badge: a tier-coloured hexagon with one to three pips (Platinum gets a star). */
+function rankBadge(rank: Rank): string {
+  const pips = rank.tier === 'platinum' ? 0 : (rank.index % 3) + 1;
+  const pipSvg = Array.from({ length: pips }, (_, i) => {
+    const x = 12 + (i - (pips - 1) / 2) * 4.2;
+    return `<circle cx="${x}" cy="12.5" r="1.5" fill="#0b0f1e"/>`;
+  }).join('');
+  const star = rank.tier === 'platinum'
+    ? '<path d="M12 7.2l1.5 3.1 3.4.5-2.5 2.4.6 3.4-3-1.6-3 1.6.6-3.4-2.5-2.4 3.4-.5Z" fill="#0b0f1e"/>'
+    : '';
+  return `<svg class="rank-badge tier-${rank.tier}" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.8 21 7v10l-9 5.2L3 17V7Z" fill="var(--tier)"/><path d="M12 1.8 21 7v10l-9 5.2L3 17V7Z" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="1"/>${pipSvg}${star}</svg>`;
+}
+
 export function formatPeople(n: number): string {
   if (n >= 1e9) return (n / 1e9).toFixed(n >= 1e10 ? 1 : 2) + ' billion';
   if (n >= 1e6) return (n / 1e6).toFixed(1) + ' million';
   return Math.round(n).toLocaleString('en-US');
 }
+
+const formatCoins = (n: number) => Math.round(n).toLocaleString('en-US');
 
 function planetSwatch(p: PlanetDef): string {
   if (p.id === 'sun') {
