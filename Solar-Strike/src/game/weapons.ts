@@ -218,6 +218,19 @@ export const WEAPONS: WeaponDef[] = [
       impact: { crater: 12, heatRadius: 0.8, heat: 0.1, debris: 50, debrisSpeed: 0.4, fire: 60, flash: 5.5, shockwave: 30, shake: 0.9, boom: 1.0 },
     },
   },
+  {
+    id: 'nova',
+    name: 'Nova Beam',
+    category: 'Energy',
+    blurb: 'Charges while held: starts as a thin ray, ends as a planet-cutting lance.',
+    price: 3200,
+    color: '#ffd060',
+    icon: '<line x1="4" y1="20" x2="18" y2="4" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/><line x1="4" y1="20" x2="18" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity=".6"/><circle cx="18" cy="4" r="3.5" fill="currentColor" opacity=".3"/><circle cx="18" cy="4" r="2" fill="currentColor" opacity=".5"/><circle cx="4" cy="20" r="2" fill="currentColor" opacity=".4"/>',
+    beam: {
+      width: 0.03, drillRate: 20, drillRadius: 1.6, heat: 2.4, color: 0xffa020, pitch: 0.5,
+      charge: { time: 3.5, maxRadius: 8.5, maxWidth: 0.24, endColor: 0xfff2c0 },
+    },
+  },
 ];
 
 export function weaponById(id: string): WeaponDef {
