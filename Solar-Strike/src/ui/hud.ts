@@ -573,6 +573,13 @@ export class Hud {
     }, ms);
   }
 
+  /** Big centre-screen word ("SHATTER!"). */
+  callout(text: string): void {
+    const c = el('div', 'callout', text);
+    this.calloutBox.append(c);
+    setTimeout(() => c.remove(), 1100);
+  }
+
   /** Small rising "+coins" number; batched so rapid gains don't spam. */
   private gainAccum = 0;
   private gainTimer: number | null = null;
@@ -590,4 +597,35 @@ export class Hud {
     }, 450);
   }
 
+  /** Confirm-style dialog. Resolves with the chosen button's index, or -1 on cancel. */
+  choose(title: string, body: string, options: { label: string; cls?: string; disabled?: boolean }[], cancel = 'Not now'): Promise<number> {
+    return new Promise(resolve => {
+      const scr = el('div', 'screen dialog-screen');
+      const panel = el('div', 'panel dialog');
+      panel.append(el('h3', '', title), el('p', '', body));
+      const row = el('div', 'results-actions');
+      if (this.dialogCount++ === 0) this.onDialogChange?.(true);
+      const close = (v: number) => {
+        scr.remove();
+        if (--this.dialogCount === 0) this.onDialogChange?.(false);
+        resolve(v);
+      };
+      options.forEach((o, i) => {
+        const b = el('button', `btn ${o.cls ?? 'btn-primary'}`, o.label);
+        b.disabled = !!o.disabled;
+        b.onclick = () => close(i);
+        row.append(b);
+      });
+      const n = el('button', 'btn btn-ghost', cancel);
+      n.onclick = () => close(-1);
+      row.append(n);
+      panel.append(row);
+      scr.append(panel);
+      this.root.append(scr);
+    });
+  }
+
+  confirm(title: string, body: string, ok: string, cancel = 'Not now', okCls = 'btn-reward'): Promise<boolean> {
+    return this.choose(title, body, [{ label: ok, cls: okCls }], cancel).then(i => i === 0);
+  }
 }
