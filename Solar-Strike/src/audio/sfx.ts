@@ -35,6 +35,11 @@ function applyMute(): void {
 }
 
 export function setMuted(m: boolean): void { muted = m; applyMute(); }
+/** Master and effects volume, each 0..1. (Music, when added, gets its own bus under master.) */
+export function setVolume(masterVol: number, sfxVol: number): void {
+  volume = Math.max(0, Math.min(1, masterVol)) * Math.max(0, Math.min(1, sfxVol));
+  applyMute();
+}
 export function isMuted(): boolean { return muted; }
 export function setAdMuted(m: boolean): void { adMuted = m; applyMute(); }
 
@@ -115,6 +120,25 @@ export function click(): void {
   o.connect(g).connect(master);
   o.start(t);
   o.stop(t + 0.1);
+}
+
+/** Coin chime for purchases. */
+export function purchase(): void {
+  const c = ensure();
+  if (!c || !master) return;
+  const t = c.currentTime;
+  [987.77, 1318.51].forEach((f, i) => {
+    const o = c.createOscillator();
+    o.type = 'square';
+    o.frequency.value = f;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t + i * 0.07);
+    g.gain.exponentialRampToValueAtTime(0.09, t + i * 0.07 + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.07 + 0.25);
+    o.connect(g).connect(master!);
+    o.start(t + i * 0.07);
+    o.stop(t + i * 0.07 + 0.3);
+  });
 }
 
 export function levelUp(): void {
