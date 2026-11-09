@@ -56,6 +56,24 @@ async function boot(): Promise<void> {
   };
 
   // ---------------------------------------------------------------------------
+  // Pausing and gameplayStart/Stop: any menu or dialog over the game is a break.
+  // ---------------------------------------------------------------------------
+  const menuOverGame = () => hud.shopOpen || hud.settingsOpen || hud.planetsOpen || hud.dialogOpen;
+  const refreshPause = () => game.setPaused(adPlaying || (inGame && menuOverGame()));
+  /** Call after closing anything: resumes gameplay if nothing else is covering it. */
+  const resumeIfPlaying = () => {
+    if (inGame && !resultsShown && !menuOverGame()) sdk.gameplayStart();
+    refreshPause();
+  };
+  const pauseForMenu = () => {
+    if (inGame) sdk.gameplayStop();
+    refreshPause();
+  };
+
+  const openOverlay = (show: () => void) => { sfx.click(); show(); pauseForMenu(); };
+  const closeOverlay = (hide: () => void) => { sfx.click(); hide(); resumeIfPlaying(); };
+
+  // ---------------------------------------------------------------------------
   // Flow
   // ---------------------------------------------------------------------------
   const enterPlanet = async (id: string) => {
@@ -250,6 +268,7 @@ async function boot(): Promise<void> {
     },
   });
 
+  hud.onDialogChange = open => (open ? pauseForMenu() : resumeIfPlaying());
   const onRankUp = (rank: Rank) => {
     sfx.levelUp();
     sdk.happyTime(); // reserved for rank-ups: QA says happytime is for real achievements only

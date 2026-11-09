@@ -434,6 +434,8 @@ export class Hud {
   hideSettings(): void { this.settings.classList.add('hidden'); }
   get settingsOpen(): boolean { return !this.settings.classList.contains('hidden'); }
 
+  get dialogOpen(): boolean { return this.dialogCount > 0; }
+
   showResults(planet: PlanetDef, killed: number, coins: number, canDouble: boolean, shotsFired: number): void {
     this.hidePlanets();
     this.results.innerHTML = '';

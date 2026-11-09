@@ -274,6 +274,12 @@ export class Game {
     if (this.weapon.beam) this.beam.setColor(this.weapon.beam.color);
   }
 
+  /** Stop all input-driven effects (menus opened over the game). */
+  setInputEnabled(on: boolean): void {
+    this.inputEnabled = on;
+    if (!on) this.stopFiring();
+  }
+
   // ----------------------------------------------------------
   // Input
   // ----------------------------------------------------------
