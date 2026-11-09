@@ -198,6 +198,29 @@ export class Hud {
     this.renderWeapons();
   }
 
+  // ---------------- Shared widgets ----------------
+  private makeRankChip(): HTMLElement {
+    const chip = el('div', 'chip rank-chip');
+    const badge = el('div', 'rank-badge-wrap');
+    const info = el('div', 'rank-info');
+    const name = el('div', 'rank-name', 'Bronze I');
+    const bar = el('div', 'xp-bar');
+    const fill = el('div', 'xp-fill');
+    bar.append(fill);
+    info.append(name, bar);
+    chip.append(badge, info);
+    this.rankChips.push({ badge, name, fill });
+    return chip;
+  }
+
+  private makeCoinChip(): HTMLElement {
+    const chip = el('div', 'chip coin-chip', COIN);
+    const t = el('span', 'coin-text', '0');
+    chip.append(t);
+    this.coinTexts.push(t);
+    return chip;
+  }
+
   // ---------------- Screens ----------------
   showMenu(): void { this.menu.classList.remove('hidden'); this.hud.classList.add('hidden'); }
   hideMenu(): void { this.menu.classList.add('hidden'); }
@@ -289,6 +312,22 @@ export class Hud {
     this.popText.textContent = total > 0 ? `Population ${formatPeople(population)}${isCritical ? ' (CRITICAL)' : ''}` : (isCritical ? '⚠️ CORE UNSTABLE' : 'Uninhabited');
     this.integrityFill.style.width = `${pct * 100}%`;
     this.integrityFill.classList.toggle('low', pct < 0.35);
+  }
+
+  setRank(rank: Rank, progress: number): void {
+    for (const c of this.rankChips) {
+      c.badge.innerHTML = rankBadge(rank);
+      c.name.textContent = rank.name;
+      c.name.className = `rank-name tier-text-${rank.tier}`;
+      c.fill.style.width = `${Math.max(0, Math.min(1, progress)) * 100}%`;
+    }
+  }
+
+  setCoins(n: number): void {
+    const changed = n !== this.coins;
+    this.coins = n;
+    for (const t of this.coinTexts) t.textContent = formatCoins(n);
+    if (changed) this.refreshPrices();
   }
 
   selectWeapon(id: string): void {
