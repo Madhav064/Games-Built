@@ -47,3 +47,29 @@ function defaults(): SaveState {
   };
 }
 
+// ------------------------------------------------------------
+// Ranks: Bronze I..III, Silver I..III, Gold I..III, Platinum
+// ------------------------------------------------------------
+export type Tier = 'bronze' | 'silver' | 'gold' | 'platinum';
+
+export interface Rank { index: number; tier: Tier; name: string }
+
+const RANKS: Rank[] = [
+  ['bronze', 'Bronze I'], ['bronze', 'Bronze II'], ['bronze', 'Bronze III'],
+  ['silver', 'Silver I'], ['silver', 'Silver II'], ['silver', 'Silver III'],
+  ['gold', 'Gold I'], ['gold', 'Gold II'], ['gold', 'Gold III'],
+  ['platinum', 'Platinum'],
+].map(([tier, name], index) => ({ index, tier: tier as Tier, name }));
+
+/** Total XP needed to reach rank `i` (rank 0 = 0 XP). */
+export function xpForRank(i: number): number {
+  if (i <= 0) return 0;
+  return Math.round(150 * Math.pow(i, 1.6));
+}
+
+export function rankFromXp(xp: number): Rank {
+  let i = 0;
+  while (i < RANKS.length - 1 && xp >= xpForRank(i + 1)) i++;
+  return RANKS[i];
+}
+
