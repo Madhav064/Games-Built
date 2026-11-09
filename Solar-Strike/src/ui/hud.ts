@@ -396,6 +396,11 @@ export class Hud {
 
   setBusy(on: boolean): void { this.busy.classList.toggle('hidden', !on); }
 
+  setDevice(type: 'desktop' | 'tablet' | 'mobile'): void {
+    this.hint.innerHTML = type === 'desktop'
+      ? 'Click to fire &middot; right-drag or arrow keys to rotate &middot; scroll to zoom'
+      : 'Tap to fire &middot; two fingers to rotate &middot; pinch to zoom';
+  }
   hideShop(): void { this.shop.classList.add('hidden'); }
   get shopOpen(): boolean { return !this.shop.classList.contains('hidden'); }
 

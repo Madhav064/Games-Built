@@ -296,6 +296,8 @@ async function boot(): Promise<void> {
   });
 
   hud.onDialogChange = open => (open ? pauseForMenu() : resumeIfPlaying());
+  hud.setDevice(device);
+
   const onRankUp = (rank: Rank) => {
     sfx.levelUp();
     sdk.happyTime(); // reserved for rank-ups: QA says happytime is for real achievements only
