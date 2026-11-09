@@ -318,6 +318,21 @@ export class VoxelPlanet {
         }
   }
 
+  /** Coldest heat value around a grid point (negative = frozen). */
+  coldAt(gx: number, gy: number, gz: number, r: number): number {
+    const h = this.heat;
+    let min = 0;
+    const o = r * 0.5;
+    const pts = [0, 0, 0, o, 0, 0, -o, 0, 0, 0, o, 0, 0, -o, 0, 0, 0, o, 0, 0, -o];
+    for (let k = 0; k < pts.length; k += 3) {
+      const x = Math.round(gx + pts[k]), y = Math.round(gy + pts[k + 1]), z = Math.round(gz + pts[k + 2]);
+      if (x < 0 || y < 0 || z < 0 || x >= GRID || y >= GRID || z >= GRID) continue;
+      const v = h[x + y * GRID + z * NXY];
+      if (v < min) min = v;
+    }
+    return min;
+  }
+
   get integrity(): number { return this.solid / this.solidInitial; }
   get coreIntegrity(): number { return this.core / this.coreInitial; }
 
