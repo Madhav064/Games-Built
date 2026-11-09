@@ -292,6 +292,9 @@ export class Debris {
 interface Flash { sprite: THREE.Sprite; t: number; dur: number; size: number }
 
 export class Flashes {
+  /** Global brightness and size of impact flashes (big additive sprites wash the screen out). */
+  static strength = 0.45;
+  static sizeScale = 0.6;
   readonly group = new THREE.Group();
   private readonly pool: Flash[] = [];
   private readonly tex = radialTexture('rgba(255,255,255,1)', 'rgba(255,255,255,0)', 128);

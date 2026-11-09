@@ -78,6 +78,9 @@ export interface GameEvents {
 
 const SUN_DIR = new THREE.Vector3(1, 0.3, -0.3).normalize();
 
+/** Bloom tuning. Kept subtle: strong bloom washes the screen out during big impacts. */
+const GLOW = { bloomStrength: 0.38, bloomRadius: 0.35, bloomThreshold: 0.9 };
+
 export class Game {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
