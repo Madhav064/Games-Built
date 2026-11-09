@@ -173,6 +173,23 @@ export const WEAPONS: WeaponDef[] = [
     },
   },
   {
+    id: 'splitter',
+    name: 'Splitter',
+    category: 'Projectiles',
+    blurb: 'One rocket that splits just before impact into a ring of six warheads.',
+    price: 1400,
+    color: '#ff4dff',
+    icon: '<path d="M12 2 L13 8 L12 9 L11 8 Z" fill="currentColor"/><path d="M12 9 L6 18 M12 9 L9 19 M12 9 L12 20 M12 9 L15 19 M12 9 L18 18" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><circle cx="6" cy="18" r="1.8" fill="currentColor"/><circle cx="9" cy="19" r="1.8" fill="currentColor"/><circle cx="12" cy="20" r="1.8" fill="currentColor"/><circle cx="15" cy="19" r="1.8" fill="currentColor"/><circle cx="18" cy="18" r="1.8" fill="currentColor"/>',
+    projectile: {
+      speed: 5, size: 0.11, model: 'warhead', trailColor: 0xff80ff, cluster: 1, spread: 0, cooldown: 1.4,
+      impact: { crater: 4.5, heatRadius: 2, heat: 1.5, debris: 40, debrisSpeed: 1.0, fire: 140, flash: 2.2, shockwave: 10, shake: 0.3, boom: 0.45 },
+      split: {
+        count: 6, ringRadius: 10,
+        impact: { crater: 4.5, heatRadius: 2, heat: 1.5, debris: 40, debrisSpeed: 1.0, fire: 140, flash: 2.2, shockwave: 10, shake: 0.3, boom: 0.45 },
+      },
+    },
+  },
+  {
     id: 'black-hole',
     name: 'Black Hole',
     category: 'Cosmic',

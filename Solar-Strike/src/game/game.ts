@@ -626,6 +626,23 @@ export class Game {
     }
   }
 
+  /** Splitter: break into a ring of warheads around the target. */
+  private split(p: Projectile): void {
+    const planet = this.planet!;
+    const sp = p.spec.split!;
+    const [t1, t2] = this.tangents(p.target);
+    const a0 = Math.random() * Math.PI * 2;
+    for (let k = 0; k < sp.count; k++) {
+      const a = a0 + (k / sp.count) * Math.PI * 2;
+      const g = p.target.clone().addScaledVector(t1, Math.cos(a) * sp.ringRadius).addScaledVector(t2, Math.sin(a) * sp.ringRadius);
+      const target = this.surfacePoint(g) ?? g;
+      const vel = planet.gridToWorld(target, new THREE.Vector3()).sub(p.pos).normalize().multiplyScalar(p.spec.speed * 1.2);
+      this.launch(p.spec, sp.impact, p.pos, vel, target, { size: p.spec.size * 0.7 });
+    }
+    this.flashes.spawn(p.pos, 0.9, 0xff80ff, 0.3);
+    sfx.whoosh(0.35, 1.6);
+  }
+
   private spawnSingularity(pos: THREE.Vector3, gridPos: THREE.Vector3): void {
     const grp = new THREE.Group();
     grp.position.copy(pos);
