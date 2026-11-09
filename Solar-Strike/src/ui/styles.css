@@ -252,3 +252,41 @@ html, body {
 .spinner { width: 46px; height: 46px; border-radius: 50%; border: 4px solid rgba(255,255,255,.15); border-top-color: var(--accent-2); animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ---------- Short landscape iframes (CrazyGames tests down to 800x450) ---------- */
+@media (max-height: 540px) {
+  .weapon-btn { width: 60px; height: 52px; border-radius: 12px; gap: 2px; }
+  .weapon-btn svg { width: 22px; height: 22px; }
+  .weapon-btn span { font-size: 10px; }
+  .weapon-bar { padding: 6px; gap: 6px; border-radius: 16px; }
+  .hint { display: none; }
+  .icon-btn { width: 36px; height: 36px; border-radius: 10px; }
+  .icon-btn svg { width: 19px; height: 19px; }
+  .rank-chip { padding: 4px 10px 4px 6px; }
+  .rank-badge-wrap { width: 24px; height: 24px; }
+  .coin-chip { padding: 4px 10px; font-size: 13px; }
+  .hud-left { gap: 4px; }
+  .logo { font-size: clamp(36px, 7vw, 64px); }
+  .tagline { margin-bottom: 8px; }
+  .btn-big { font-size: 19px; padding: 12px 52px; }
+  .menu-screen { padding-bottom: 5vh; }
+}
+.weapon-btn span { line-height: 1.05; text-align: center; }
+.shop-grid, .planet-grid { scrollbar-width: thin; scrollbar-color: rgba(140,180,255,.35) transparent; }
+@media (max-height: 540px) {
+  .panel { padding: 14px; }
+  .panel-head { margin-bottom: 8px; }
+  .shop-bar { margin-bottom: 8px; }
+  .shop-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+  .shop-card { padding: 10px; gap: 6px; }
+  .shop-art { height: 42px; }
+  .shop-art svg { width: 28px; height: 28px; }
+  .shop-art .planet-ball { width: 36px; height: 36px; }
+  .shop-name { font-size: 15px; margin: 0 0 2px; }
+  .shop-blurb { font-size: 11px; }
+  .shop-foot .btn-buy { padding: 6px 12px; font-size: 13px; }
+  .planet-grid { max-height: 78vh; }
+  .planet-card { padding: 8px; }
+  .planet-ball { width: 46px; height: 46px; }
+  .set-row { padding: 6px 2px; }
+}
+
