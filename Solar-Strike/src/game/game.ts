@@ -453,6 +453,27 @@ export class Game {
     this.projectiles.splice(i, 1);
   }
 
+  /** Project a grid point onto the current surface, along the line to the centre. */
+  private surfacePoint(g: THREE.Vector3): THREE.Vector3 | null {
+    const planet = this.planet;
+    if (!planet) return null;
+    const dir = g.clone().subScalar(CENTER);
+    if (dir.lengthSq() < 1e-6) return null;
+    dir.normalize();
+    const c = new THREE.Vector3(CENTER, CENTER, CENTER);
+    const originW = planet.gridToWorld(c.clone().addScaledVector(dir, RADIUS_VOX + 8), new THREE.Vector3());
+    const dirW = planet.gridToWorld(c, new THREE.Vector3()).sub(originW).normalize();
+    return planet.raycast(originW, dirW, new THREE.Vector3());
+  }
+
+  /** Two unit vectors tangent to the surface at grid point g. */
+  private tangents(g: THREE.Vector3): [THREE.Vector3, THREE.Vector3] {
+    const n = g.clone().subScalar(CENTER).normalize();
+    const ref = Math.abs(n.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+    const t1 = new THREE.Vector3().crossVectors(n, ref).normalize();
+    return [t1, new THREE.Vector3().crossVectors(n, t1)];
+  }
+
   private makeProjectileMesh(model: ProjectileSpec['model'], size: number): THREE.Object3D {
     if (model === 'rock') {
       const geo = new THREE.IcosahedronGeometry(size, 1);
