@@ -82,6 +82,19 @@ export async function initSDK(): Promise<boolean> {
 
 export const isOnCrazyGames = (): boolean => !!active();
 
+/**
+ * Whether to show rewarded-ad buttons at all. QA rule: no rewarded buttons that do nothing,
+ * so they hide with an adblocker or when ads are disabled for the game.
+ */
+export const canShowRewarded = (): boolean => !!active() && adsUsable;
+
+/** Device type from CrazyGames system info (QA: don't guess from touch support). */
+export function deviceType(): 'desktop' | 'tablet' | 'mobile' {
+  const t = safely('systemInfo', () => active()?.user?.systemInfo?.device?.type, undefined);
+  if (t) return t;
+  return /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent) ? 'mobile' : 'desktop';
+}
+
 export const loadingStart = () => safely('loadingStart', () => active()?.game.loadingStart(), undefined);
 export const loadingStop = () => safely('loadingStop', () => active()?.game.loadingStop(), undefined);
 
