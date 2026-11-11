@@ -22,6 +22,7 @@ export class CameraRig {
   }
 
   zoom(factor: number): void {
+    if (!Number.isFinite(factor) || factor <= 0) return;
     this.tDist = THREE.MathUtils.clamp(this.tDist * factor, this.minDist, this.maxDist);
   }
 
@@ -40,6 +41,9 @@ export class CameraRig {
   }
 
   update(dt: number): void {
+    // Safety net: one bad value would otherwise stick forever and black out the view.
+    if (!Number.isFinite(this.tDist)) this.tDist = this.baseDist;
+    if (!Number.isFinite(this.dist)) this.dist = this.tDist;
     const k = 1 - Math.exp(-dt * 8);
     this.yaw += (this.tYaw - this.yaw) * k;
     this.pitch += (this.tPitch - this.pitch) * k;

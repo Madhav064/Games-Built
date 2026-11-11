@@ -1215,6 +1215,9 @@ export class Game {
 
   private resize(): void {
     const w = window.innerWidth, h = window.innerHeight;
+    // A hidden or collapsed iframe reports 0x0: the maths below would turn the camera
+    // distance into NaN and leave the screen black for good. Wait for a real size.
+    if (w <= 0 || h <= 0) return;
     this.camera.aspect = w / h;
     // Keep the planet framed on tall (portrait) screens.
     this.camera.fov = w < h ? 55 : 45;
