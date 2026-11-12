@@ -396,7 +396,9 @@ export class Hud {
     this.freeCoinsBtn.classList.toggle('hidden', !visible);
     const cooling = secondsLeft > 0;
     this.freeCoinsBtn.disabled = cooling;
-    const t = `${Math.floor(secondsLeft / 60)}:${String(Math.ceil(secondsLeft) % 60).padStart(2, '0')}`;
+    // Round once, then split, so 179.3 s reads 3:00 (not 2:00) and 59.5 s reads 1:00 (not 0:00).
+    const whole = Math.ceil(secondsLeft);
+    const t = `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
     this.freeCoinsBtn.innerHTML = cooling
       ? `Free ${COIN} ${amount} in ${t}`
       : `<span class="ad-tag">AD</span> Free ${COIN} ${amount}`;
