@@ -58,7 +58,12 @@ async function boot(): Promise<void> {
   // ---------------------------------------------------------------------------
   // Pausing and gameplayStart/Stop: any menu or dialog over the game is a break.
   // ---------------------------------------------------------------------------
-  const menuOverGame = () => hud.shopOpen || hud.settingsOpen || hud.planetsOpen || hud.dialogOpen;
+  /**
+   * Held while a dialog leads into an ad (weapon trial), so closing the dialog doesn't
+   * resume gameplay for a moment before the ad request. Play resumes once the ad is done.
+   */
+  let adFlowHold = 0;
+  const menuOverGame = () => hud.shopOpen || hud.settingsOpen || hud.planetsOpen || hud.dialogOpen || adFlowHold > 0;
   const refreshPause = () => game.setPaused(adPlaying || (inGame && menuOverGame()));
   /** Call after closing anything: resumes gameplay if nothing else is covering it. */
   const resumeIfPlaying = () => {
@@ -213,17 +218,22 @@ async function boot(): Promise<void> {
         + (ads ? ' Or watch a short ad to try it on this planet.' : '');
       const options = [{ label: `${COIN} ${fmt(w.price)}`, cls: 'btn-buy', disabled: !can }];
       if (ads) options.push({ label: '<span class="ad-tag">AD</span> Try it', cls: 'btn-reward', disabled: false });
-      const pick = await hud.choose(w.name, body, options);
-      if (pick === 0) {
-        if (buyWeapon(w)) { game.selectWeapon(w.id); hud.selectWeapon(w.id); }
-      } else if (pick === 1 && await rewardedAd()) {
-        hud.grantTrial(w.id);
-        game.selectWeapon(w.id);
-        hud.selectWeapon(w.id);
-        sfx.purchase();
-        hud.toast(`${w.name} unlocked for this planet!`, 'level', 2600);
+      adFlowHold++;
+      try {
+        const pick = await hud.choose(w.name, body, options);
+        if (pick === 0) {
+          if (buyWeapon(w)) { game.selectWeapon(w.id); hud.selectWeapon(w.id); }
+        } else if (pick === 1 && await rewardedAd()) {
+          hud.grantTrial(w.id);
+          game.selectWeapon(w.id);
+          hud.selectWeapon(w.id);
+          sfx.purchase();
+          hud.toast(`${w.name} unlocked for this planet!`, 'level', 2600);
+        }
+      } finally {
+        adFlowHold--;
+        resumeIfPlaying();
       }
-      resumeIfPlaying();
     },
     onBuy: (kind, id) => {
       if (kind === 'weapon') {
