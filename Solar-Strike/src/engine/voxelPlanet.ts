@@ -7,7 +7,7 @@ import { surfaceNets } from './surfaceNets';
 import { PlanetSurface, type PlanetDef } from './planets';
 import { Simplex3 } from './noise';
 import { createPlanetMaterial } from './planetMaterial';
-import { planetData } from './planetCache';
+import { cachedField, planetData, storeField } from './planetCache';
 
 export const GRID = 96;
 const CHUNK = 16;
@@ -90,6 +90,14 @@ export class VoxelPlanet {
   // ----------------------------------------------------------
   private generate(): void {
     const f = this.field;
+    // Rebuilding the same planet: copy the starting field instead of recomputing it.
+    const cached = cachedField(this.def.id);
+    if (cached) {
+      f.set(cached.data);
+      this.solid = this.solidInitial = cached.solid;
+      this.core = this.coreInitial = cached.core;
+      return;
+    }
     let solid = 0, core = 0;
     for (let z = 0; z < GRID; z++) {
       const dz = z - CENTER;
@@ -115,6 +123,7 @@ export class VoxelPlanet {
     }
     this.solid = this.solidInitial = solid;
     this.core = this.coreInitial = core;
+    storeField(this.def.id, f, solid, core);
   }
 
   // ----------------------------------------------------------

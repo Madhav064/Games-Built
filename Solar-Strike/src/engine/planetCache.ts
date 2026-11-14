@@ -1,7 +1,8 @@
 // Caches the expensive per-planet data so loading a planet is fast:
 // - surface lookup + cloud pattern, built ahead of time in a worker (prewarm) or on
-//   demand on the main thread if the worker hasn't got there yet.
-// About 1.3 MB per planet for the surface and clouds.
+//   demand on the main thread if the worker hasn't got there yet;
+// - the starting voxel field of the most recent planet, so rebuilding it is a copy.
+// About 1.3 MB per planet for the surface and clouds, 3.5 MB for the one cached field.
 
 import { buildCloudAlpha, buildSurface, type SurfaceData } from './planetData';
 import type { PlanetDef } from './planets';
@@ -58,4 +59,17 @@ export function planetData(def: PlanetDef): PlanetData {
     cache.set(def.id, d);
   }
   return d;
+}
+
+// ------------------------------------------------------------
+// Starting voxel field of the most recently built planet
+// ------------------------------------------------------------
+let field: { id: string; data: Float32Array; solid: number; core: number } | null = null;
+
+export function cachedField(id: string): { data: Float32Array; solid: number; core: number } | null {
+  return field && field.id === id ? field : null;
+}
+
+export function storeField(id: string, data: Float32Array, solid: number, core: number): void {
+  field = { id, data: data.slice(), solid, core };
 }
