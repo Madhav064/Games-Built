@@ -7,6 +7,7 @@ import { surfaceNets } from './surfaceNets';
 import { PlanetSurface, type PlanetDef } from './planets';
 import { Simplex3 } from './noise';
 import { createPlanetMaterial } from './planetMaterial';
+import { planetData } from './planetCache';
 
 export const GRID = 96;
 const CHUNK = 16;
@@ -71,7 +72,7 @@ export class VoxelPlanet {
   private readonly surfaceTexture: THREE.Texture;
 
   constructor(readonly def: PlanetDef) {
-    this.surface = new PlanetSurface(def);
+    this.surface = new PlanetSurface(def, planetData(def).surface);
     this.surfaceTexture = this.surface.createTexture();
     this.material = createPlanetMaterial(this.surfaceTexture);
     const c = def.colors;

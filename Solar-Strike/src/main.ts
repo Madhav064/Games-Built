@@ -3,6 +3,7 @@ import { Game } from './game/game';
 import { COIN, Hud } from './ui/hud';
 import { Progress, type Rank, type Settings } from './game/progress';
 import { PLANETS, type PlanetDef } from './engine/planets';
+import { prewarm } from './engine/planetCache';
 import { WEAPONS, type WeaponDef } from './game/weapons';
 import * as sdk from './sdk/crazygames';
 import * as sfx from './audio/sfx';
@@ -173,6 +174,7 @@ async function boot(): Promise<void> {
   };
   const buyPlanet = (p: PlanetDef): boolean => {
     if (!progress.buy('planet', p.id, p.price)) { hud.toast('Not enough coins'); return false; }
+    prewarm([p]);
     unlocked(p.name);
     return true;
   };
@@ -367,6 +369,8 @@ async function boot(): Promise<void> {
   game.rig.dist = 9; game.rig.zoom(1.25);
   game.start();
   sdk.loadingStop();
+  // Build the other owned planets in a background worker so switching to them is quick.
+  prewarm(PLANETS.filter(p => progress.ownsPlanet(p.id)));
 }
 
 void boot().catch(err => {

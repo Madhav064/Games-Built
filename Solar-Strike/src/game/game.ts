@@ -8,6 +8,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 
 import { VoxelPlanet, VOXEL, WORLD_RADIUS, RADIUS_VOX, CENTER } from '../engine/voxelPlanet';
 import { PLANETS, type PlanetDef } from '../engine/planets';
+import { planetData } from '../engine/planetCache';
 import { CloudLayer, createAtmosphere, createRings, createStarfield, createSun } from '../engine/scenery';
 import { Beam, Debris, Flashes, Particles, Rings } from '../engine/effects';
 import { Shatter } from '../engine/shatter';
@@ -205,7 +206,7 @@ export class Game {
     this.scene.add(planet.group);
     planet.group.rotation.y = Math.random() * Math.PI * 2;
     if (def.clouds) {
-      this.clouds = new CloudLayer(WORLD_RADIUS * 1.035, def.clouds, def.seed);
+      this.clouds = new CloudLayer(WORLD_RADIUS * 1.035, def.clouds, planetData(def).clouds!);
       planet.group.add(this.clouds.mesh);
     }
     if (def.atmosphere) {

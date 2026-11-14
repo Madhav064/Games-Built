@@ -1,8 +1,9 @@
 // Space backdrop, sun, atmosphere glow and a cloud layer that impacts punch holes in.
 
 import * as THREE from 'three';
-import { Simplex3, mulberry32 } from './noise';
+import { mulberry32 } from './noise';
 import type { CloudDef } from './planets';
+import { CLOUD_H, CLOUD_W } from './planetData';
 
 export function radialTexture(inner = 'rgba(255,255,255,1)', outer = 'rgba(255,255,255,0)', size = 128): THREE.Texture {
   const c = document.createElement('canvas');
@@ -118,7 +119,7 @@ export function createAtmosphere(radius: number, color: number, strength: number
   return new THREE.Mesh(new THREE.SphereGeometry(radius, 64, 48), mat);
 }
 
-const CW = 768, CH = 384;
+const CW = CLOUD_W, CH = CLOUD_H;
 
 /** A cloud shell drawn on a canvas so explosions can blow holes in it. */
 export class CloudLayer {
@@ -127,28 +128,17 @@ export class CloudLayer {
   private readonly tex: THREE.CanvasTexture;
   private readonly baseOpacity: number;
 
-  constructor(radius: number, def: CloudDef, seed: number) {
+  /** `alpha`: the cloud pattern from buildCloudAlpha (planetData.ts), CW x CH bytes. */
+  constructor(radius: number, def: CloudDef, alpha: Uint8Array) {
     const canvas = document.createElement('canvas');
     canvas.width = CW; canvas.height = CH;
     this.ctx = canvas.getContext('2d')!;
     const img = this.ctx.createImageData(CW, CH);
-    const noise = new Simplex3(seed + 77);
     const col = new THREE.Color(def.color);
-    for (let y = 0; y < CH; y++) {
-      const theta = ((y + 0.5) / CH) * Math.PI;
-      for (let x = 0; x < CW; x++) {
-        const phi = ((x + 0.5) / CW) * Math.PI * 2;
-        // Same convention as THREE.SphereGeometry.
-        const dx = -Math.cos(phi) * Math.sin(theta), dy = Math.cos(theta), dz = Math.sin(phi) * Math.sin(theta);
-        // Swirl: warp the lookup with low-frequency noise.
-        const w = noise.noise(dx * 1.5, dy * 1.5, dz * 1.5) * 0.6;
-        let n = noise.fbm(dx * 2.6 + w, dy * 5.2 + w, dz * 2.6 - w, 5) * 0.5 + 0.5;
-        n = (n - (1 - def.coverage)) / def.coverage;
-        const a = Math.max(0, Math.min(1, n * 1.8));
-        const i = (y * CW + x) * 4;
-        img.data[i] = col.r * 255; img.data[i + 1] = col.g * 255; img.data[i + 2] = col.b * 255;
-        img.data[i + 3] = a * 255;
-      }
+    const r = col.r * 255, g = col.g * 255, b = col.b * 255;
+    const d = img.data;
+    for (let p = 0, i = 0; p < CW * CH; p++, i += 4) {
+      d[i] = r; d[i + 1] = g; d[i + 2] = b; d[i + 3] = alpha[p];
     }
     this.ctx.putImageData(img, 0, 0);
     this.tex = new THREE.CanvasTexture(canvas);
