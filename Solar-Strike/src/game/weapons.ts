@@ -164,7 +164,7 @@ export const WEAPONS: WeaponDef[] = [
     color: '#ff8c42',
     icon: '<path d="M3.6 4.2 8.8 9.4M12 3.4l3.6 3.6M2.8 12.2l4.4 4.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" opacity=".5"/><circle cx="11" cy="11.2" r="2.9" fill="currentColor"/><circle cx="17.6" cy="8.6" r="2.2" fill="currentColor"/><circle cx="9.2" cy="18.2" r="2.3" fill="currentColor"/><circle cx="18.4" cy="18" r="1.6" fill="currentColor" opacity=".75"/>',
     projectile: {
-      speed: 5, size: 0.12, model: 'rock', trailColor: 0xff6a20, cluster: 1, spread: 4, cooldown: 0.11,
+      speed: 5, size: 0.12, model: 'rock', trailColor: 0xff6a20, cluster: 1, spread: 4, cooldown: 0.11, launch: 'above',
       impact: { crater: 2.8, heatRadius: 1.6, heat: 1.3, debris: 10, debrisSpeed: 0.9, fire: 50, flash: 1.1, shockwave: 0, shake: 0.08, boom: 0.18, stability: 0.003 },
     },
   },
@@ -177,7 +177,7 @@ export const WEAPONS: WeaponDef[] = [
     color: '#c9a27e',
     icon: '<path d="M8 3.4 14 2.6l4.9 3 2.1 5.7-1.6 6.1-5.3 3.5-6.5-.6L3.3 16.2l-.6-6.3z" fill="currentColor"/><circle cx="9.4" cy="9.4" r="2.1" fill="#0b0f1e" opacity=".35"/><circle cx="15" cy="14.6" r="2.9" fill="#0b0f1e" opacity=".3"/><circle cx="15.6" cy="7.4" r="1.2" fill="#0b0f1e" opacity=".3"/><circle cx="7.6" cy="15" r="1" fill="#0b0f1e" opacity=".3"/>',
     projectile: {
-      speed: 3.2, size: 0.34, model: 'rock', trailColor: 0xff7a30, cluster: 1, spread: 0, cooldown: 1.2,
+      speed: 3.2, size: 0.34, model: 'rock', trailColor: 0xff7a30, cluster: 1, spread: 0, cooldown: 1.2, launch: 'above',
       impact: { crater: 11, heatRadius: 1.6, heat: 1.6, debris: 160, debrisSpeed: 1.3, fire: 360, flash: 4.2, shockwave: 24, shake: 0.75, boom: 0.9, stability: 0.1 },
       ejecta: { count: 9, crater: 3, minRange: 13, maxRange: 26 },
     },
