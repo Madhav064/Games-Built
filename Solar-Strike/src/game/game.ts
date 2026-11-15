@@ -54,7 +54,7 @@ interface LanceDrill {
 /** Small rocks thrown out by an asteroid impact. */
 const EJECTA_SPEC: ProjectileSpec = {
   speed: 2.2, size: 0.07, model: 'rock', trailColor: 0xff7a30, cluster: 1, spread: 0, cooldown: 0,
-  impact: { crater: 3, heatRadius: 1.6, heat: 1.2, debris: 8, debrisSpeed: 0.8, fire: 40, flash: 1.0, shockwave: 0, shake: 0.05, boom: 0.12 },
+  impact: { crater: 3, heatRadius: 1.6, heat: 1.2, debris: 8, debrisSpeed: 0.8, fire: 40, flash: 1.0, shockwave: 0, shake: 0.05, boom: 0.12, stability: 0.004 },
 };
 
 interface ActiveSingularity {
@@ -133,6 +133,10 @@ export class Game {
   private planetGen = 0;
   private beamAcc = 0;
   private lastIntegrity = 1;
+  /** 1 = steady, 0 = breaks apart. Every hit drains it (see `stability` in weapons.ts). */
+  private stability = 1;
+  /** Stability drain multiplier (2 on a brand-new player's first planet). */
+  private stabilityScale = 1;
   private lastKilledShare = 0;
   private statsTimer = 0;
 
@@ -225,6 +229,7 @@ export class Game {
     this.population.setViewportHeight(window.innerHeight);
     planet.group.add(this.population.points);
     this.lastIntegrity = 1;
+    this.stability = 1;
     this.lastKilledShare = 0;
     this.xpEarned = 0;
     this.shotsThisPlanet = 0;
@@ -735,6 +740,7 @@ export class Game {
         planet.carve(s.gridPos.x, s.gridPos.y, s.gridPos.z, s.carveRadius, 0.4);
         planet.addHeat(s.gridPos.x, s.gridPos.y, s.gridPos.z, s.carveRadius * 1.3, 0.3);
         this.population?.blast(s.gridPos.x, s.gridPos.y, s.gridPos.z, s.carveRadius * 1.4);
+        this.damageStability(0.004);
         // Tear rock off the surrounding ground and drag it in.
         for (let k = 0; k < 3; k++) {
           const off = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5)
@@ -757,6 +763,7 @@ export class Game {
         if (planet && !this.destroyed) {
           planet.carve(s.gridPos.x, s.gridPos.y, s.gridPos.z, 15, 0.4);
           planet.addHeat(s.gridPos.x, s.gridPos.y, s.gridPos.z, 22, 1.8);
+          this.damageStability(0.12);
         }
         this.rig.shake(0.9);
         s.group.removeFromParent();
@@ -773,6 +780,7 @@ export class Game {
     const frozen = planet.coldAt(g.x, g.y, g.z, Math.max(2, s.crater * 0.6)) < -0.4;
     const crater = frozen ? s.crater * 1.7 : s.crater;
     const res = planet.carve(g.x, g.y, g.z, crater);
+    this.damageStability(frozen ? s.stability * 1.7 : s.stability);
     planet.addHeat(g.x, g.y, g.z, crater * s.heatRadius, s.heat);
     this.population?.blast(g.x, g.y, g.z, crater * 1.2);
 
@@ -874,6 +882,7 @@ export class Game {
         planet.addHeat(L.g.x, L.g.y, L.g.z, r, 0.45);
         planet.carve(L.g.x, L.g.y, L.g.z, r * 0.42, 0.6);
         this.population?.blast(L.g.x, L.g.y, L.g.z, r * 0.9);
+        this.damageStability(0.0008);
       }
       // Bubbling sparks across the pool.
       const w = planet.gridToWorld(L.g, this.tmpA);
@@ -914,6 +923,7 @@ export class Game {
         const end = L.g.clone().addScaledVector(L.dir, L.depth);
         planet.carve(end.x, end.y, end.z, L.cavity, 0.5);
         planet.addHeat(end.x, end.y, end.z, L.cavity * 1.8, 2.2);
+        this.damageStability(0.06);
         // The blast escapes up the shaft.
         this.flashes.spawn(mouth, 3.2, 0x80f0ff, 0.6);
         this.flashes.spawn(mouth, 1.6, 0xffffff, 0.3);
@@ -992,6 +1002,7 @@ export class Game {
         planet.addHeat(hitG.x, hitG.y, hitG.z, r * 2.2, spec.heat * STEP * 6);
       }
       this.population?.blast(hitG.x, hitG.y, hitG.z, r * 1.2);
+      this.damageStability(spec.stability * STEP * (1 + charge * 5) * (frozenHit ? 1.7 : 1));
       if (this.beamAcc >= STEP) hitG = planet.raycast(ray.origin, ray.direction, hitG) ?? null;
     }
     if (!hitG) {
@@ -1175,10 +1186,11 @@ export class Game {
             this.lastKilledShare = share;
           }
         }
-        const h = Math.max(0, Math.min(1, (integ - 0.6) / 0.38));
+        const b = this.breakAt;
+        const h = this.health;
         this.clouds?.setHealth(h);
         if (this.atmosphere) (this.atmosphere.material as THREE.ShaderMaterial).uniforms.uStrength.value = this.atmoStrength * (0.3 + 0.7 * h);
-        if (planet.coreIntegrity < 0.8 || integ < 0.6) this.destroyPlanet();
+        if (this.stability <= 0 || planet.coreIntegrity < b.core || integ < b.mass) this.destroyPlanet();
       }
       this.shatter?.update(dt);
       this.particles.update(dt);
@@ -1203,15 +1215,27 @@ export class Game {
   }
 
   /**
-   * 1 = intact, 0 = about to break apart. The planet breaks at 60 % mass OR 80 % core,
+   * 1 = intact, 0 = about to break apart. The planet breaks at `breakAt` mass OR core,
    * so the bar follows whichever is closer to its limit.
    */
   get health(): number {
     const p = this.planet;
     if (!p) return 1;
-    const mass = (p.integrity - 0.6) / 0.4;
-    const core = (p.coreIntegrity - 0.8) / 0.2;
-    return Math.max(0, Math.min(1, mass, core));
+    const b = this.breakAt;
+    const mass = (p.integrity - b.mass) / (1 - b.mass);
+    const core = (p.coreIntegrity - b.core) / (1 - b.core);
+    return Math.max(0, Math.min(1, mass, core, this.stability));
+  }
+
+  /**
+   * Planets break below these fractions of their starting mass or core.
+   * `easy` (a brand-new player's first planet) halves the damage needed.
+   */
+  breakAt = { mass: 0.6, core: 0.8 };
+
+  private damageStability(amount: number): void {
+    if (this.destroyed || !this.planet) return;
+    this.stability = Math.max(0, this.stability - amount * this.stabilityScale);
   }
 
   private resize(): void {
