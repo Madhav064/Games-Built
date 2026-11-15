@@ -186,11 +186,15 @@ html, body {
 .weapon-btn span { font-size: 11px; font-weight: 700; color: var(--text); }
 .weapon-btn:hover { background: rgba(255,255,255,.09); }
 .weapon-btn.selected { border-color: var(--wc); background: color-mix(in srgb, var(--wc) 16%, transparent); box-shadow: 0 0 16px color-mix(in srgb, var(--wc) 35%, transparent); }
-.weapon-btn.locked { color: #55607a; }
-.weapon-btn.locked span { color: #66708a; }
-.weapon-btn em { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 3px; font-style: normal; font-size: 12px; font-weight: 900; color: #ffe08a; background: rgba(4,6,14,.62); border-radius: 14px; }
-.weapon-btn em .coin { width: 13px; height: 13px; }
-.weapon-btn.trial::after { content: 'TRIAL'; position: absolute; top: -6px; right: -4px; font-size: 9px; font-weight: 900; background: var(--cyan); color: #031225; border-radius: 6px; padding: 1px 5px; }
+.weapon-btn.locked { color: var(--wc); }
+.weapon-btn.locked > svg { opacity: .32; filter: grayscale(.6); }
+.weapon-btn .wb-lock { position: absolute; top: 5px; right: 6px; width: 12px; height: 12px; color: #7d88a6; }
+.weapon-btn .wb-lock svg { width: 12px; height: 12px; display: block; }
+.weapon-btn em { display: inline-flex; align-items: center; gap: 3px; font-style: normal; font-size: 11px; font-weight: 900; color: #c9b27a; background: rgba(255,200,80,.1); border: 1px solid rgba(255,200,80,.18); border-radius: 8px; padding: 1px 6px; line-height: 1.3; }
+.weapon-btn em.can { color: #2a1600; background: linear-gradient(180deg, #ffd45a, #f0a019); border-color: transparent; box-shadow: 0 0 10px rgba(255,190,60,.35); }
+.weapon-btn em .coin { width: 12px; height: 12px; }
+/* Inside the button: the weapon bar scrolls sideways, so anything outside its box is clipped. */
+.weapon-btn.trial::after { content: 'TRIAL'; position: absolute; top: 3px; right: 3px; font-size: 8px; font-weight: 900; background: var(--cyan); color: #031225; border-radius: 5px; padding: 1px 4px; }
 .hint { font-size: 11px; color: rgba(200,210,235,.5); text-align: center; }
 
 /* ---------- Results ---------- */

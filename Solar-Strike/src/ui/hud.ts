@@ -578,7 +578,13 @@ export class Hud {
       const available = this.isWeaponAvailable(w);
       const b = el('button', `weapon-btn${w.id === this.selectedWeapon ? ' selected' : ''}${available ? '' : ' locked'}`);
       b.style.setProperty('--wc', w.color);
-      b.innerHTML = `${svg(w.icon)}<span>${w.name}</span>${available ? '' : `<em>${COIN}${formatCoins(w.price)}</em>`}`;
+      b.dataset.weapon = w.id;
+      b.title = available ? w.name : `${w.name}: ${formatCoins(w.price)} coins`;
+      b.setAttribute('aria-label', b.title);
+      // Locked: dimmed icon, a small lock, and the price where the name goes (gold when affordable).
+      b.innerHTML = available
+        ? `${svg(w.icon)}<span>${w.name}</span>`
+        : `${svg(w.icon)}<i class="wb-lock">${svg(ICONS.lock)}</i><em class="${this.coins >= w.price ? 'can' : ''}">${COIN}${formatCoins(w.price)}</em>`;
       if (this.trialWeapons.has(w.id) && !this.ownedWeapons.has(w.id)) b.classList.add('trial');
       b.onclick = () => {
         if (available) this.h.onSelectWeapon(w);
