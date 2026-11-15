@@ -40,7 +40,14 @@ export interface PlanetDef {
   rings?: RingDef | null;
   /** Coins to unlock in the shop (0 = free). */
   price: number;
+  /** How the planet reacts to hits (default: rocky). */
+  kind?: PlanetKind;
+  /** Stability multiplier: above 1 takes longer to break, below 1 breaks sooner (default 1). */
+  toughness?: number;
 }
+
+/** gas: billows glowing gas and bursts into a cloud. star: throws solar flares. ice: always frozen, so every hit shatters. */
+export type PlanetKind = 'rocky' | 'gas' | 'star' | 'ice';
 
 export const PLANETS: PlanetDef[] = [
   {
@@ -102,6 +109,7 @@ export const PLANETS: PlanetDef[] = [
     clouds: null,
     atmosphere: null,
     price: 0,
+    toughness: 0.8,
   },
   {
     id: 'venus',
@@ -142,6 +150,8 @@ export const PLANETS: PlanetDef[] = [
     clouds: { color: 0xeee0c8, coverage: 0.55, opacity: 0.7 },
     atmosphere: { color: 0xdcb484, strength: 1.5 },
     price: 500,
+    kind: 'gas',
+    toughness: 1.4,
   },
   {
     id: 'pluto',
@@ -162,6 +172,8 @@ export const PLANETS: PlanetDef[] = [
     clouds: null,
     atmosphere: null,
     price: 300,
+    kind: 'ice',
+    toughness: 0.75,
   },
   {
     id: 'titan',
@@ -202,6 +214,7 @@ export const PLANETS: PlanetDef[] = [
     clouds: null,
     atmosphere: null,
     price: 300,
+    toughness: 0.85,
   },
   {
     id: 'kepler',
@@ -249,6 +262,8 @@ export const PLANETS: PlanetDef[] = [
       tilt: 0.42,
     },
     price: 1000,
+    kind: 'gas',
+    toughness: 1.3,
   },
   {
     id: 'neptune',
@@ -269,6 +284,8 @@ export const PLANETS: PlanetDef[] = [
     clouds: { color: 0xa8caff, coverage: 0.42, opacity: 0.8 },
     atmosphere: { color: 0x2e66ff, strength: 1.5 },
     price: 1200,
+    kind: 'gas',
+    toughness: 1.2,
   },
   {
     id: 'sun',
@@ -289,6 +306,8 @@ export const PLANETS: PlanetDef[] = [
     clouds: { color: 0xffea70, coverage: 0.6, opacity: 0.75 },
     atmosphere: { color: 0xffa010, strength: 2.4 },
     price: 2000,
+    kind: 'star',
+    toughness: 1.6,
   },
 ];
 

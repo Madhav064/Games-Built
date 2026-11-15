@@ -245,6 +245,8 @@ export class Game {
     this.lastIntegrity = 1;
     this.stability = 1;
     this.planetTime = 0;
+    this.flareTimer = 1.5;
+    this.updateStabilityScale();
     this.lastKilledShare = 0;
     this.xpEarned = 0;
     this.shotsThisPlanet = 0;
@@ -794,7 +796,8 @@ export class Game {
   private impact(g: THREE.Vector3, s: ImpactSpec, proj?: ProjectileSpec): void {
     const planet = this.planet;
     if (!planet) return;
-    const frozen = planet.coldAt(g.x, g.y, g.z, Math.max(2, s.crater * 0.6)) < -0.4;
+    // Ice worlds are always frozen: every hit shatters.
+    const frozen = this.planetDef.kind === 'ice' || planet.coldAt(g.x, g.y, g.z, Math.max(2, s.crater * 0.6)) < -0.4;
     const crater = frozen ? s.crater * 1.7 : s.crater;
     const res = planet.carve(g.x, g.y, g.z, crater);
     this.damageStability(frozen ? s.stability * 1.7 : s.stability);
@@ -835,8 +838,12 @@ export class Game {
       });
     }
 
+    // Gas giants billow gas and stars throw flares instead of rock.
+    const kind = this.planetDef.kind ?? 'rocky';
+    if (kind === 'gas') this.gasPuff(g, world, normal, 0.6 + crater / 6);
+    else if (kind === 'star') { this.solarFlare(world, normal, 0.7 + s.boom * 0.8); if (s.boom > 0.5) this.solarFlare(world, normal, 0.6); }
     // Rock debris scaled by how much was actually removed.
-    const n = Math.min(s.debris, Math.round(res.removed / 4) + 3);
+    const n = kind === 'rocky' || kind === 'ice' ? Math.min(s.debris, Math.round(res.removed / 4) + 3) : 0;
     for (let k = 0; k < n; k++) {
       const v = this.randomHemisphere(normal, 0.6);
       const sp = s.debrisSpeed * (0.3 + Math.random() * 0.8);
@@ -1087,7 +1094,7 @@ export class Game {
       this.beamAcc -= STEP;
       let r = radius;
       // Burning beams slice through frozen ground far faster.
-      if (!spec.isCryo && planet.coldAt(hitG.x, hitG.y, hitG.z, r) < -0.4) { r *= 1.8; frozenHit = true; }
+      if (!spec.isCryo && (this.planetDef.kind === 'ice' || planet.coldAt(hitG.x, hitG.y, hitG.z, r) < -0.4)) { r *= 1.8; frozenHit = true; }
       if (spec.drillRate > 0) {
         const adv = spec.drillRate * STEP;
         const c = hitG.clone().addScaledVector(dirG, adv - r * 0.7);
@@ -1144,7 +1151,12 @@ export class Game {
     this.beamHitTimer -= dt;
     if (this.beamHitTimer <= 0) {
       this.beamHitTimer = 0.07;
-      if (spec.drillRate > 0) {
+      const kind = this.planetDef.kind ?? 'rocky';
+      if (spec.drillRate > 0 && kind === 'gas') {
+        if (Math.random() < 0.35) this.gasPuff(hitG, hitW, normal, 0.35 * scale);
+      } else if (spec.drillRate > 0 && kind === 'star') {
+        if (Math.random() < 0.08 * scale) this.solarFlare(hitW, normal, 0.5);
+      } else if (spec.drillRate > 0) {
         planet.debrisColor(hitG.x, hitG.y, hitG.z, this.tmpColor);
         const v = this.randomHemisphere(normal, 0.7).multiplyScalar((0.5 + Math.random() * 0.6) * scale);
         this.debris.spawn(hitW.clone().addScaledVector(normal, 0.04), v, VOXEL * (0.2 + Math.random() * 0.4) * scale, this.tmpColor, 1.2, 4);
@@ -1195,6 +1207,34 @@ export class Game {
       this.debris.spawn(pos, v.multiplyScalar(0.8 + Math.random() * 2.4), VOXEL * (0.3 + Math.random() * 1.8), c, 1.5, 14);
     }
     this.debris.gravity = 0.4;
+    // Gas giants burst into a slow, glowing cloud; stars blow out a fast shell of plasma.
+    const kind = this.planetDef.kind ?? 'rocky';
+    if (kind === 'gas') {
+      const cols = [this.planetDef.colors.low, this.planetDef.colors.mid, this.planetDef.colors.high].map(h => new THREE.Color(h));
+      for (let k = 0; k < 900; k++) {
+        const v = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
+        const r = WORLD_RADIUS * (0.4 + Math.random() * 0.6);
+        const sp = 0.25 + Math.random() * 0.9;
+        const col = cols[k % 3];
+        this.particles.spawn({
+          x: v.x * r, y: v.y * r, z: v.z * r, vx: v.x * sp, vy: v.y * sp, vz: v.z * sp,
+          r: col.r * 0.45, g: col.g * 0.45, b: col.b * 0.45, size: 0.2 + Math.random() * 0.3,
+          life: 2 + Math.random() * 2, drag: 0.4, grow: 2.2,
+        });
+      }
+    } else if (kind === 'star') {
+      for (let k = 0; k < 1200; k++) {
+        const v = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
+        const sp = 2.4 + Math.random() * 1.8;
+        const hot = Math.random();
+        this.particles.spawn({
+          x: v.x * WORLD_RADIUS, y: v.y * WORLD_RADIUS, z: v.z * WORLD_RADIUS, vx: v.x * sp, vy: v.y * sp, vz: v.z * sp,
+          r: 1, g: 0.65 + hot * 0.3, b: 0.25 + hot * 0.4, size: 0.06 + Math.random() * 0.12,
+          life: 1.2 + Math.random() * 1.2, drag: 0.5, grow: 1.6,
+        });
+      }
+      this.rings.spawn(this.scene, new THREE.Vector3(), this.camera.position.clone().normalize(), WORLD_RADIUS * 7, 0xfff0b0, 2.4);
+    }
     const toCam = this.camera.position.clone().normalize();
     this.rings.spawn(this.scene, new THREE.Vector3(), toCam, WORLD_RADIUS * 5, 0xffb070, 3.2);
     this.rig.shake(1.2);
@@ -1258,6 +1298,7 @@ export class Game {
       this.updateSingularities(dt);
       this.updateLava(dt);
       this.updateLances(dt);
+      this.updatePersonality(dt);
       this.impactLight.intensity *= Math.exp(-dt * 8);
 
       // Shockwave fire fronts
@@ -1341,6 +1382,64 @@ export class Game {
   breakAt = { mass: 0.6, core: 0.8 };
   setEasyBreak(easy: boolean): void {
     this.breakAt = easy ? { mass: 0.8, core: 0.9 } : { mass: 0.6, core: 0.8 };
+    this.easyBreak = easy;
+    this.updateStabilityScale();
+  }
+  private easyBreak = false;
+  /** Tough planets (gas giants, the Sun) lose stability slower; small ones faster. */
+  private updateStabilityScale(): void {
+    this.stabilityScale = (this.easyBreak ? 2 : 1) / (this.planetDef.toughness ?? 1);
+  }
+
+  // ----------------------------------------------------------
+  // Planet personalities
+  // ----------------------------------------------------------
+  private flareTimer = 2;
+
+  /** Stars flare on their own every few seconds. */
+  private updatePersonality(dt: number): void {
+    if (this.planetDef.kind !== 'star' || !this.planet || this.destroyed) return;
+    this.flareTimer -= dt;
+    if (this.flareTimer > 0) return;
+    this.flareTimer = 1.5 + Math.random() * 2.5;
+    const n = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
+    this.solarFlare(n.clone().multiplyScalar(WORLD_RADIUS * 0.98), n, 0.6 + Math.random() * 0.5);
+  }
+
+  /** A looping arc of plasma that lifts off the surface and falls back. */
+  private solarFlare(world: THREE.Vector3, normal: THREE.Vector3, power: number): void {
+    const [t1, t2] = this.worldTangents(normal);
+    const a = Math.random() * Math.PI * 2;
+    const tan = t1.multiplyScalar(Math.cos(a)).addScaledVector(t2, Math.sin(a));
+    const n = Math.round(45 * power);
+    for (let k = 0; k < n; k++) {
+      const up = (0.8 + Math.random() * 0.5) * power;
+      const side = (0.35 + Math.random() * 0.35) * power;
+      const hot = Math.random();
+      this.particles.spawn({
+        x: world.x, y: world.y, z: world.z,
+        vx: normal.x * up + tan.x * side, vy: normal.y * up + tan.y * side, vz: normal.z * up + tan.z * side,
+        r: 1, g: 0.5 + hot * 0.4, b: 0.1 + hot * 0.2, size: 0.04 + Math.random() * 0.06,
+        life: 1.1 + Math.random() * 0.8, drag: 0.25, gravity: 3.2, grow: 1.4,
+      });
+    }
+  }
+
+  /** Soft glowing clouds in the colour of the gas bands at the hit. */
+  private gasPuff(g: THREE.Vector3, world: THREE.Vector3, normal: THREE.Vector3, size: number): void {
+    const planet = this.planet;
+    if (!planet) return;
+    planet.debrisColor(g.x, g.y, g.z, this.tmpColor);
+    const c = this.tmpColor;
+    const n = Math.round(16 * size);
+    for (let k = 0; k < n; k++) {
+      const v = this.randomHemisphere(normal, 0.8).multiplyScalar(0.12 + Math.random() * 0.35);
+      this.particles.spawn({
+        x: world.x, y: world.y, z: world.z, vx: v.x, vy: v.y, vz: v.z,
+        r: c.r * 0.55 + 0.1, g: c.g * 0.55 + 0.06, b: c.b * 0.55 + 0.04, size: (0.1 + Math.random() * 0.15) * size,
+        life: 1.4 + Math.random() * 1.2, drag: 1, gravity: 0.08, grow: 2.6,
+      });
+    }
   }
 
   private damageStability(amount: number): void {
