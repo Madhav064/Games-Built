@@ -7,6 +7,7 @@ import { prewarm } from './engine/planetCache';
 import { WEAPONS, type WeaponDef } from './game/weapons';
 import { applyMissionEvent, describeMission, ensureMissions, missionProgressText, type MissionContext, type MissionEvent } from './game/missions';
 import { ACHIEVEMENTS, checkAchievements, claimedTiers } from './game/achievements';
+import { ORBITER_REWARD } from './game/orbiters';
 import * as sdk from './sdk/crazygames';
 import * as sfx from './audio/sfx';
 
@@ -450,6 +451,19 @@ async function boot(): Promise<void> {
     hud.setPlanet(p);
     weaponsUsed.clear();
     killedOnPlanet = 0;
+  };
+  game.events.onOrbiterDown = kind => {
+    if (!inGame) return;
+    // Bonus coins (and the same XP), plus mission and achievement progress.
+    const reward = ORBITER_REWARD[kind];
+    const rank = progress.addXp(reward);
+    progress.addCoins(reward);
+    hud.coinGain(reward);
+    progress.state.satellitesDown++;
+    syncWallet();
+    if (rank) onRankUp(rank);
+    missionEvent({ type: 'satellite' });
+    checkAch();
   };
   game.events.onShatter = () => {
     if (!inGame) return;

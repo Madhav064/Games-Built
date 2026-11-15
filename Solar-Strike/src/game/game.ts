@@ -16,6 +16,7 @@ import { Population } from './population';
 import { CameraRig } from './cameraRig';
 import { WEAPONS, weaponById, type ImpactSpec, type ProjectileSpec, type WeaponDef } from './weapons';
 import * as sfx from '../audio/sfx';
+import { Orbiters, type Orbiter, type OrbiterKind } from './orbiters';
 
 interface Projectile {
   spec: ProjectileSpec;
@@ -35,6 +36,8 @@ interface Projectile {
    * first, then straight down that line, so it lands exactly where the player clicked.
    */
   approach: THREE.Vector3 | null;
+  /** Aimed at an orbiting target instead of the surface. */
+  orbiter: Orbiter | null;
 }
 
 interface Shockwave {
@@ -82,6 +85,8 @@ export interface GameEvents {
   onCooldown?: (fraction: number) => void;
   /** Frozen ground shattered (at most about once a second). */
   onShatter?: () => void;
+  /** An orbiting target was shot down. */
+  onOrbiterDown?: (kind: OrbiterKind) => void;
   /** Big centre-screen callout, e.g. "SHATTER!". */
   onCallout?: (text: string) => void;
 }
@@ -112,6 +117,7 @@ export class Game {
   private planetRings: THREE.Mesh | null = null;
   private atmoStrength = 1;
   private population: Population | null = null;
+  private orbiters: Orbiters | null = null;
   private shatter: Shatter | null = null;
   destroyed = false;
 
@@ -242,6 +248,8 @@ export class Game {
     this.population = new Population(planet, SUN_DIR);
     this.population.setViewportHeight(window.innerHeight);
     planet.group.add(this.population.points);
+    this.orbiters = new Orbiters(def);
+    this.scene.add(this.orbiters.group);
     this.lastIntegrity = 1;
     this.stability = 1;
     this.planetTime = 0;
@@ -274,6 +282,8 @@ export class Game {
     this.rings.clear();
     this.population?.dispose();
     this.population = null;
+    this.orbiters?.dispose();
+    this.orbiters = null;
     this.clouds?.dispose();
     this.clouds = null;
     if (this.planetRings) {
@@ -425,10 +435,36 @@ export class Game {
   // ----------------------------------------------------------
   // Weapons
   // ----------------------------------------------------------
+  /** An orbiter under the pointer that's in front of the planet, if any. */
+  private aimOrbiter(): Orbiter | null {
+    if (!this.orbiters || !this.planet) return null;
+    this.raycaster.setFromCamera(this.pointerNdc, this.camera);
+    const ray = this.raycaster.ray;
+    const o = this.orbiters.raycast(ray.origin, ray.direction);
+    if (!o) return null;
+    const g = this.planet.raycast(ray.origin, ray.direction, this.tmpA);
+    if (g && this.planet.gridToWorld(g, this.tmpB).distanceTo(ray.origin) < o.dist) return null;
+    return o.orbiter;
+  }
+
   private fireProjectile(): void {
     const spec = this.weapon.projectile!;
     const planet = this.planet;
     if (!planet) return;
+    // Clicked a satellite or moon: send the shot at it instead of the ground.
+    const orbiter = this.aimOrbiter();
+    if (orbiter) {
+      this.cooldown = spec.cooldown;
+      const toCam = this.camera.position.clone().sub(orbiter.pos).normalize();
+      const side = new THREE.Vector3().crossVectors(toCam, this.camera.up).normalize();
+      const start = orbiter.pos.clone().addScaledVector(toCam, 4).addScaledVector(side, (Math.random() < 0.5 ? -1 : 1) * 3);
+      const vel = orbiter.pos.clone().sub(start).normalize().multiplyScalar(spec.speed);
+      this.launch(spec, spec.impact, start, vel, planet.worldToGrid(orbiter.pos, new THREE.Vector3()), { orbiter, homing: 10 });
+      sfx.launch(spec.split ? 'split' : spec.model, spec.size > 0.2);
+      this.shotsThisPlanet++;
+      this.events.onShotFired?.();
+      return;
+    }
     const hit = this.aim(new THREE.Vector3());
     if (!hit) return;
     this.cooldown = spec.cooldown;
@@ -464,7 +500,7 @@ export class Game {
 
   private launch(
     spec: ProjectileSpec, impact: ImpactSpec, start: THREE.Vector3, vel: THREE.Vector3, target: THREE.Vector3,
-    o: { homing?: number; canSplit?: boolean; armAt?: number; size?: number; approach?: THREE.Vector3 } = {},
+    o: { homing?: number; canSplit?: boolean; armAt?: number; size?: number; approach?: THREE.Vector3; orbiter?: Orbiter } = {},
   ): void {
     const mesh = this.makeProjectileMesh(spec.model, o.size ?? spec.size);
     mesh.position.copy(start);
@@ -473,6 +509,7 @@ export class Game {
       spec, impact, mesh, pos: start.clone(), vel: vel.clone(), target: target.clone(), trailTimer: 0, age: 0,
       homing: o.homing ?? spec.homing ?? 6, armAt: o.armAt ?? 0, canSplit: o.canSplit ?? false,
       approach: o.approach?.clone() ?? null,
+      orbiter: o.orbiter ?? null,
     });
   }
 
@@ -586,10 +623,16 @@ export class Game {
         this.removeProjectile(i);
         continue;
       }
+      // Its orbiting target was destroyed by something else: fizzle out.
+      if (p.orbiter && !p.orbiter.alive) {
+        this.flashes.spawn(p.pos, 0.3, 0xffc080, 0.2);
+        this.removeProjectile(i);
+        continue;
+      }
       // Home in on the (rotating) target point, via the line-of-sight waypoint first.
-      const targetWorld = planet.gridToWorld(p.target, this.tmpA);
+      const targetWorld = p.orbiter ? this.tmpA.copy(p.orbiter.pos) : planet.gridToWorld(p.target, this.tmpA);
       const remaining = targetWorld.distanceTo(p.pos);
-      if (p.canSplit && spec.split && remaining < 1.3) {
+      if (!p.orbiter && p.canSplit && spec.split && remaining < 1.3) {
         this.split(p);
         this.removeProjectile(i);
         continue;
@@ -611,13 +654,18 @@ export class Game {
       const step = p.vel.length() * dt;
       // Sub-step so fast projectiles don't tunnel through the surface.
       let hit = false;
+      let hitOrbiter: Orbiter | null = null;
       const armed = p.age >= p.armAt;
       const steps = Math.max(1, Math.ceil(step / (VOXEL * 1.5)));
       for (let s = 0; s < steps; s++) {
         p.pos.addScaledVector(p.vel, dt / steps);
+        // Anything passing close to a satellite or moon clips it.
+        if (armed && this.orbiters && (hitOrbiter = this.orbiters.near(p.pos, 0.03))) break;
         if (armed && planet.isSolidWorld(p.pos, this.tmpC)) { hit = true; break; }
       }
-      if (armed && remaining < step) hit = true;
+      if (p.orbiter) {
+        if (!hitOrbiter && remaining < p.orbiter.radius + step) hitOrbiter = p.orbiter;
+      } else if (armed && remaining < step) hit = true;
       p.mesh.position.copy(p.pos);
       if (spec.model === 'rock' || spec.model === 'blob') {
         p.mesh.rotation.x += dt * 1.3; p.mesh.rotation.y += dt * 0.7;
@@ -648,6 +696,11 @@ export class Game {
           });
         }
       }
+      if (hitOrbiter) {
+        this.orbiterHit(hitOrbiter, spec.isBlackHole || spec.impact.stability >= 0.05 ? 99 : 1, p.pos);
+        this.removeProjectile(i);
+        continue;
+      }
       if (hit) {
         // Close to the target: detonate exactly on it (sub-steps can stop a few voxels short).
         const g = remaining < 0.25 ? p.target.clone() : planet.worldToGrid(p.pos, new THREE.Vector3());
@@ -658,6 +711,34 @@ export class Game {
         this.removeProjectile(i);
       }
     }
+  }
+
+  /** Damage an orbiting target; a kill throws metal (or rock) debris and reports it. */
+  private orbiterHit(o: Orbiter, damage: number, at: THREE.Vector3): void {
+    if (!this.orbiters) return;
+    this.orbiterFx(o, this.orbiters.hit(o, damage), at);
+  }
+
+  private orbiterFx(o: Orbiter, killed: boolean, at: THREE.Vector3): void {
+    this.flashes.spawn(at, killed ? 1.0 : 0.45, 0xffd6a0, killed ? 0.45 : 0.2);
+    const n = killed ? 40 : 12;
+    for (let k = 0; k < n; k++) {
+      const v = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(0.4 + Math.random() * (killed ? 1.4 : 0.6));
+      this.particles.spawn({
+        x: at.x, y: at.y, z: at.z, vx: v.x, vy: v.y, vz: v.z,
+        r: 1, g: 0.6 + Math.random() * 0.3, b: 0.3, size: 0.03 + Math.random() * 0.05, life: 0.3 + Math.random() * 0.5, drag: 1.5,
+      });
+    }
+    if (!killed) { sfx.explosion(0.05); return; }
+    const col = this.tmpColor.set(o.kind === 'moon' ? 0x8a8076 : 0xb8bcc6);
+    for (let k = 0; k < (o.kind === 'moon' ? 14 : 8); k++) {
+      const v = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(0.3 + Math.random() * 0.8);
+      this.debris.spawn(o.pos.clone(), v, VOXEL * (0.3 + Math.random() * 0.6), col, o.kind === 'moon' ? 0.8 : 0.3, 4);
+    }
+    sfx.explosion(o.kind === 'moon' ? 0.3 : 0.15);
+    sfx.crack();
+    this.rig.shake(0.08);
+    this.events.onOrbiterDown?.(o.kind);
   }
 
   /** Splitter: break into a ring of warheads around the target. */
@@ -1078,6 +1159,12 @@ export class Game {
     const from = this.camera.position.clone().addScaledVector(right, 2.2).addScaledVector(up, 1.6)
       .addScaledVector(ray.direction, 0.8);
     let hitG = planet.raycast(ray.origin, ray.direction, new THREE.Vector3());
+    // A satellite or moon in front of the beam burns (about 6 hit points a second).
+    const oh = this.orbiters?.raycast(ray.origin, ray.direction);
+    if (oh && (!hitG || oh.dist < planet.gridToWorld(hitG, this.tmpC).distanceTo(ray.origin))) {
+      if (this.orbiters!.hit(oh.orbiter, dt * 6)) this.orbiterFx(oh.orbiter, true, oh.orbiter.pos);
+      else if (Math.random() < 0.3) this.particles.spawn({ x: oh.orbiter.pos.x, y: oh.orbiter.pos.y, z: oh.orbiter.pos.z, vx: (Math.random() - 0.5) * 0.6, vy: (Math.random() - 0.5) * 0.6, vz: (Math.random() - 0.5) * 0.6, r: 1, g: 0.7, b: 0.4, size: 0.05, life: 0.25 });
+    }
     if (!hitG) {
       this.beam.show(from, ray.origin.clone().addScaledVector(ray.direction, 30), width, dt);
       return;
@@ -1298,6 +1385,7 @@ export class Game {
       this.updateSingularities(dt);
       this.updateLava(dt);
       this.updateLances(dt);
+      this.orbiters?.update(dt);
       this.updatePersonality(dt);
       this.impactLight.intensity *= Math.exp(-dt * 8);
 

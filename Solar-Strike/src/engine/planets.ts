@@ -44,6 +44,8 @@ export interface PlanetDef {
   kind?: PlanetKind;
   /** Stability multiplier: above 1 takes longer to break, below 1 breaks sooner (default 1). */
   toughness?: number;
+  /** Bonus targets in orbit. */
+  orbiters?: { satellites?: number; stations?: number; moons?: number };
 }
 
 /** gas: billows glowing gas and bursts into a cloud. star: throws solar flares. ice: always frozen, so every hit shatters. */
@@ -69,6 +71,7 @@ export const PLANETS: PlanetDef[] = [
     clouds: { color: 0xffffff, coverage: 0.42, opacity: 0.85 },
     atmosphere: { color: 0x5aa8ff, strength: 1.0 },
     price: 0,
+    orbiters: { satellites: 4, stations: 1 },
   },
   {
     id: 'mars',
@@ -89,6 +92,7 @@ export const PLANETS: PlanetDef[] = [
     clouds: null,
     atmosphere: { color: 0xff9a6a, strength: 0.45 },
     price: 0,
+    orbiters: { moons: 2, satellites: 1 },
   },
   {
     id: 'moon',
@@ -110,6 +114,7 @@ export const PLANETS: PlanetDef[] = [
     atmosphere: null,
     price: 0,
     toughness: 0.8,
+    orbiters: { satellites: 2 },
   },
   {
     id: 'venus',
@@ -130,6 +135,7 @@ export const PLANETS: PlanetDef[] = [
     clouds: { color: 0xf0d8a0, coverage: 0.65, opacity: 0.92 },
     atmosphere: { color: 0xffc860, strength: 1.3 },
     price: 0,
+    orbiters: { satellites: 1 },
   },
   {
     id: 'jupiter',
@@ -152,6 +158,7 @@ export const PLANETS: PlanetDef[] = [
     price: 500,
     kind: 'gas',
     toughness: 1.4,
+    orbiters: { moons: 3 },
   },
   {
     id: 'pluto',
@@ -174,6 +181,7 @@ export const PLANETS: PlanetDef[] = [
     price: 300,
     kind: 'ice',
     toughness: 0.75,
+    orbiters: { moons: 1 },
   },
   {
     id: 'titan',
@@ -194,6 +202,7 @@ export const PLANETS: PlanetDef[] = [
     clouds: { color: 0xe8c080, coverage: 0.72, opacity: 0.88 },
     atmosphere: { color: 0xf0a840, strength: 1.1 },
     price: 600,
+    orbiters: { satellites: 1 },
   },
   {
     id: 'mercury',
@@ -215,6 +224,7 @@ export const PLANETS: PlanetDef[] = [
     atmosphere: null,
     price: 300,
     toughness: 0.85,
+    orbiters: { satellites: 1 },
   },
   {
     id: 'kepler',
@@ -235,6 +245,7 @@ export const PLANETS: PlanetDef[] = [
     clouds: { color: 0xe8f0ff, coverage: 0.48, opacity: 0.8 },
     atmosphere: { color: 0x40b8ff, strength: 1.2 },
     price: 800,
+    orbiters: { satellites: 3 },
   },
   {
     id: 'saturn',
@@ -264,6 +275,7 @@ export const PLANETS: PlanetDef[] = [
     price: 1000,
     kind: 'gas',
     toughness: 1.3,
+    orbiters: { moons: 2 },
   },
   {
     id: 'neptune',
@@ -286,6 +298,7 @@ export const PLANETS: PlanetDef[] = [
     price: 1200,
     kind: 'gas',
     toughness: 1.2,
+    orbiters: { moons: 1 },
   },
   {
     id: 'sun',
@@ -308,6 +321,7 @@ export const PLANETS: PlanetDef[] = [
     price: 2000,
     kind: 'star',
     toughness: 1.6,
+    orbiters: { satellites: 2 },
   },
 ];
 
