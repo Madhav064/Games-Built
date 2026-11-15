@@ -49,6 +49,15 @@ function mix(a: Rgb, b: Rgb, t: number): Rgb {
 
 const toByte = (v: number) => Math.max(0, Math.min(255, v * 255));
 
+/** Earth 2099: same continents, but land is grey megacity sprawl in patches and seas run darker. */
+function future2099(col: Rgb, isLand: boolean, n: number): Rgb {
+  if (!isLand) return mix(col, [0.02, 0.1, 0.16], 0.35);
+  const ice = col[0] > 0.75 && col[2] > 0.75;
+  if (ice) return col;
+  const sprawl = Math.max(0, Math.min(1, 0.55 + n * 0.9));
+  return mix(mix(col, [0.32, 0.36, 0.3], 0.35), [0.42, 0.44, 0.48], sprawl * 0.75);
+}
+
 interface Crater { x: number; y: number; z: number; cosR: number; depth: number }
 
 export function buildSurface(def: PlanetDef): SurfaceData {
@@ -70,6 +79,7 @@ export function buildSurface(def: PlanetDef): SurfaceData {
   const deepOcean = hexToRgb(c.deepOcean), ocean = hexToRgb(c.ocean), shore = hexToRgb(c.shore);
   const low = hexToRgb(c.low), midC = hexToRgb(c.mid), high = hexToRgb(c.high), peak = hexToRgb(c.peak);
   const ice = hexToRgb(c.ice);
+  const real = def.realMap ? getEarthMap() : null;
 
   for (let j = 0; j < LUT_H; j++) {
     const lat = ((j + 0.5) / LUT_H) * Math.PI - Math.PI / 2; // -pi/2..pi/2
@@ -90,6 +100,22 @@ export function buildSurface(def: PlanetDef): SurfaceData {
         }
       }
       const idx = j * LUT_W + i;
+      if (real) {
+        // Real coastlines and colours; noise only adds gentle relief inland.
+        const seaR = def.seaLevel ?? 0;
+        const isLand = real.land[idx] === 1;
+        height[idx] = (isLand ? Math.max(seaR + 0.04, n) : seaR) * def.terrainAmp;
+        land[idx] = isLand ? 1 : 0;
+        const k = real.index[idx] * 3;
+        let col: Rgb = [real.palette[k] / 255, real.palette[k + 1] / 255, real.palette[k + 2] / 255];
+        if (def.realMap === 'earth2099') col = future2099(col, isLand, detail.noise(x * 14, y * 14, z * 14));
+        const capT = Math.abs(sl) + detail.noise(x * 4, y * 4, z * 4) * 0.06;
+        if (!isLand && capT > def.iceCap) col = mix(col, ice, (capT - def.iceCap) * 25);
+        color[idx * 3] = toByte(col[0]);
+        color[idx * 3 + 1] = toByte(col[1]);
+        color[idx * 3 + 2] = toByte(col[2]);
+        continue;
+      }
       const sea = def.seaLevel;
       const isOcean = sea !== null && n < sea;
       const h = isOcean ? sea! : n;
