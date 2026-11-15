@@ -4,6 +4,21 @@
 
 import { Simplex3, mulberry32 } from './noise';
 import type { CloudDef, PlanetDef } from './planets';
+import { EARTH_MAP_B64, EARTH_PALETTE_SIZE } from './earthMap';
+
+/** Decoded real Earth map (see scripts/build-earth-map.py), in surface-lookup layout. */
+let earthMap: { palette: Uint8Array; land: Uint8Array; index: Uint8Array } | null = null;
+function getEarthMap(): NonNullable<typeof earthMap> {
+  if (earthMap) return earthMap;
+  const bin = atob(EARTH_MAP_B64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const p = EARTH_PALETTE_SIZE * 3, n = LUT_W * LUT_H;
+  const land = new Uint8Array(n);
+  for (let i = 0; i < n; i++) land[i] = (bytes[p + (i >> 3)] >> (i & 7)) & 1;
+  earthMap = { palette: bytes.subarray(0, p), land, index: bytes.subarray(p + n / 8, p + n / 8 + n) };
+  return earthMap;
+}
 
 /** Surface lookup size (latitude/longitude grid). */
 export const LUT_W = 512;
