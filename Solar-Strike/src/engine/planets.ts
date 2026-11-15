@@ -46,6 +46,8 @@ export interface PlanetDef {
   toughness?: number;
   /** Bonus targets in orbit. */
   orbiters?: { satellites?: number; stations?: number; moons?: number };
+  /** Use the real Earth map (coastlines + colours) instead of noise terrain. */
+  realMap?: 'earth' | 'earth2099';
 }
 
 /** gas: billows glowing gas and bursts into a cloud. star: throws solar flares. ice: always frozen, so every hit shatters. */
