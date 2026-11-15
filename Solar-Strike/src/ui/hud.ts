@@ -77,6 +77,12 @@ export function formatPeople(n: number): string {
 
 const formatCoins = (n: number) => Math.round(n).toLocaleString('en-US');
 
+/** How a weapon is fired, shown next to its name. */
+function weaponUsage(w: WeaponDef): string {
+  if (w.beam) return 'HOLD';
+  return (w.projectile?.cooldown ?? 1) < 0.3 ? 'TAP / HOLD' : 'TAP';
+}
+
 function planetSwatch(p: PlanetDef): string {
   if (p.id === 'sun') {
     return 'radial-gradient(circle at 35% 35%, #fff 0%, #ffe066 25%, #ff7700 60%, #cc2200 100%)';
@@ -648,7 +654,13 @@ export class Hud {
       this.weaponBar.append(b);
     }
     const sel = WEAPONS.find(w => w.id === this.selectedWeapon);
-    this.weaponInfo.textContent = sel ? sel.blurb : '';
+    this.weaponInfo.innerHTML = sel ? `<b>${sel.name}</b><span class="wi-tag">${weaponUsage(sel)}</span>${sel.blurb}` : '';
+  }
+
+  /** Reload sweep on the selected weapon's button (0 = ready). */
+  setCooldown(fraction: number): void {
+    const b = this.weaponBar.querySelector<HTMLElement>('.weapon-btn.selected');
+    if (b) b.style.setProperty('--cd', String(fraction));
   }
 
   // ---------------- Feedback ----------------

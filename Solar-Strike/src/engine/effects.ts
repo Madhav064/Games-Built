@@ -409,7 +409,29 @@ export class Beam {
     this.core.scale.set(w * 0.32, len, w * 0.32);
     this.glow.scale.set(w, len, w);
     this.group.visible = true;
+    this.lastWidth = w;
+    this.releaseT = 0;
   }
 
-  hide(): void { this.group.visible = false; }
+  hide(): void { this.group.visible = false; this.releaseT = 0; }
+
+  private lastWidth = 0;
+  private releaseT = 0;
+  private static readonly RELEASE = 0.12;
+
+  /** The player let go: shrink the beam to nothing over a few frames (see idle). */
+  release(): void {
+    if (this.group.visible) this.releaseT = Beam.RELEASE;
+  }
+
+  /** Call every frame the beam isn't firing. */
+  idle(dt: number): void {
+    if (this.releaseT <= 0) { this.group.visible = false; return; }
+    this.releaseT -= dt;
+    const k = Math.max(0, this.releaseT / Beam.RELEASE);
+    const w = this.lastWidth * k * k;
+    this.core.scale.x = this.core.scale.z = w * 0.32;
+    this.glow.scale.x = this.glow.scale.z = w;
+    if (k <= 0) this.group.visible = false;
+  }
 }

@@ -121,6 +121,67 @@ export function whoosh(duration = 0.6, pitch = 1): void {
   src.stop(t + duration + 0.05);
 }
 
+/** A short pitched tone with an exponential glide and decay. */
+function tone(type: OscillatorType, from: number, to: number, dur: number, gain: number, delay = 0): void {
+  const c = ensure();
+  if (!c || !master) return;
+  const t = c.currentTime + delay;
+  const o = c.createOscillator();
+  o.type = type;
+  o.frequency.setValueAtTime(from, t);
+  o.frequency.exponentialRampToValueAtTime(Math.max(1, to), t + dur);
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(gain, t + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(master);
+  o.start(t);
+  o.stop(t + dur + 0.05);
+}
+
+/** Filtered noise burst. */
+function noiseBurst(filter: BiquadFilterType, freq: number, q: number, dur: number, gain: number, delay = 0): void {
+  const c = ensure();
+  if (!c || !master) return;
+  const t = c.currentTime + delay;
+  const src = noise(c);
+  const f = c.createBiquadFilter();
+  f.type = filter;
+  f.frequency.value = freq;
+  f.Q.value = q;
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(gain, t + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(f).connect(g).connect(master);
+  src.start(t, Math.random());
+  src.stop(t + dur + 0.05);
+}
+
+export type LaunchKind = 'missile' | 'warhead' | 'blob' | 'rock' | 'rod' | 'singularity' | 'split';
+
+/** Each projectile family gets its own launch sound. */
+export function launch(kind: LaunchKind, big = false): void {
+  switch (kind) {
+    case 'missile': whoosh(0.45, 1.3); noiseBurst('highpass', 4200, 0.7, 0.18, 0.08); break;
+    case 'warhead': whoosh(1.1, 0.6); tone('sine', 70, 120, 0.9, 0.18); break;
+    case 'blob': tone('sine', 150, 48, 0.28, 0.5); noiseBurst('lowpass', 500, 1, 0.22, 0.25); break;
+    case 'rock': whoosh(big ? 1.6 : 0.9, big ? 0.45 : 0.7); break;
+    case 'rod': tone('triangle', 2200, 700, 0.35, 0.14); noiseBurst('bandpass', 3000, 4, 0.25, 0.1); whoosh(0.3, 1.8); break;
+    case 'singularity': tone('sine', 260, 70, 0.9, 0.22); tone('sine', 266, 72, 0.9, 0.12); break;
+    case 'split': whoosh(0.5, 1); break;
+  }
+}
+
+/** Molten hiss after a plasma impact. */
+export function sizzle(): void { noiseBurst('highpass', 2600, 0.6, 0.9, 0.12, 0.05); }
+
+/** Sharp metallic crack and ring for kinetic impacts. */
+export function crack(): void { noiseBurst('bandpass', 3200, 2, 0.12, 0.35); tone('sine', 1100, 900, 0.6, 0.08); }
+
+/** Long, deep after-rumble for the biggest blasts. */
+export function rumble(delay = 0.25): void { tone('sine', 52, 30, 2.4, 0.4, delay); noiseBurst('lowpass', 180, 0.8, 2.2, 0.3, delay); }
+
 export function click(): void {
   const c = ensure();
   if (!c || !master) return;

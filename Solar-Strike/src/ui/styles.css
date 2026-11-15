@@ -294,6 +294,11 @@ html, body {
   .set-row { padding: 6px 2px; }
 }
 
+/* ---------- Weapon reload sweep and info line ---------- */
+.weapon-btn::before { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: calc(var(--cd, 0) * 100%); background: rgba(2,3,9,.55); border-radius: inherit; pointer-events: none; }
+.weapon-info b { color: var(--text); margin-right: 6px; }
+.wi-tag { display: inline-block; font-size: 9px; font-weight: 900; letter-spacing: .08em; color: var(--accent-2); border: 1px solid rgba(255,180,80,.45); border-radius: 5px; padding: 0 4px; margin-right: 7px; vertical-align: 1px; }
+
 /* ---------- Planet-load fade ---------- */
 .fade-screen { position: absolute; inset: 0; background: var(--bg); opacity: 0; transition: opacity .17s ease; pointer-events: none; z-index: 30; }
 .fade-screen.on { opacity: 1; pointer-events: auto; }

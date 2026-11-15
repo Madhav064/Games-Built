@@ -399,6 +399,7 @@ async function boot(): Promise<void> {
     refreshTips();
     hud.showResults(planet, killed, xp * COINS_PER_XP, sdk.canShowRewarded(), shots, lastDestroyExtras);
   };
+  game.events.onCooldown = f => hud.setCooldown(f);
   game.events.onFireHeld = weaponId => {
     if (WEAPONS.find(x => x.id === weaponId)?.projectile) completeTip(2);
     if (weaponId === 'laser') completeTip(3);

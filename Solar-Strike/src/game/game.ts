@@ -75,6 +75,8 @@ export interface GameEvents {
   onShotFired?: () => void;
   /** Fire has been held down for a moment with this weapon (once per press). */
   onFireHeld?: (weaponId: string) => void;
+  /** Reload progress of slow weapons: 1 = just fired, 0 = ready. */
+  onCooldown?: (fraction: number) => void;
   /** Big centre-screen callout, e.g. "SHATTER!". */
   onCallout?: (text: string) => void;
 }
@@ -121,6 +123,7 @@ export class Game {
   private firing = false;
   /** Seconds fire has been held this press (-1 once onFireHeld has been sent). */
   private holdTime = 0;
+  private lastCooldown = 0;
   private pointerNdc = new THREE.Vector2();
   private cooldown = 0;
   private stopBeamSound: (() => void) | null = null;
@@ -338,7 +341,7 @@ export class Game {
       this.pointers.delete(e.pointerId);
       if (this.firePointer === e.pointerId) {
         this.firePointer = null;
-        this.stopFiring();
+        this.stopFiring(true);
       }
       if ([...this.pointers.values()].filter(p => p.type === 'touch').length < 2) this.pinchDist = 0;
     };
@@ -392,12 +395,13 @@ export class Game {
     if (this.weapon.projectile && this.cooldown <= 0) this.fireProjectile();
   }
 
-  stopFiring(): void {
+  /** `release`: the player let go, so a beam shrinks away; otherwise (menus, pause) it vanishes. */
+  stopFiring(release = false): void {
     this.firing = false;
     this.holdTime = 0;
     this.beamAcc = 0;
     this.beamHold = 0;
-    this.beam.hide();
+    if (release) this.beam.release(); else this.beam.hide();
     if (this.stopBeamSound) { this.stopBeamSound(); this.stopBeamSound = null; }
   }
 
@@ -443,7 +447,7 @@ export class Game {
       const approach = target.clone().addScaledVector(toCamG, lob ? 20 : 12);
       this.launch(spec, spec.impact, start, vel.multiplyScalar(spec.speed), target, { canSplit: !!spec.split, approach });
     }
-    sfx.whoosh(spec.model === 'rock' ? 1.6 : 0.5, spec.model === 'rock' ? 0.5 : 1.2);
+    sfx.launch(spec.split ? 'split' : spec.model, spec.size > 0.2);
     this.shotsThisPlanet++;
     this.events.onShotFired?.();
   }
@@ -835,6 +839,10 @@ export class Game {
     }
 
     if (frozen) this.shatterFx(world, normal, crater);
+    // Signature impacts: each weapon family gets its own look and sound on top of the blast.
+    if (s.shockKill) this.nukeFx(world, normal);
+    else if (proj?.isKinetic) this.kineticFx(world, normal);
+    else if (proj?.lava) this.splashFx(world, normal);
     if (proj?.lava) this.lavaPools.push({ g: g.clone(), t: 0, dur: proj.lava.duration, radius: proj.lava.radius, tick: 0 });
     if (proj?.ejecta) this.throwEjecta(g, proj.ejecta);
     if (proj?.lance) {
@@ -846,6 +854,77 @@ export class Game {
     this.clouds?.punch(world, (crater * (1.4 + s.boom)) / RADIUS_VOX);
     this.rig.shake(s.shake);
     sfx.explosion(s.boom);
+  }
+
+  /** Nuke: a rising fireball column, a dust skirt racing outward, a second flash and a long rumble. */
+  private nukeFx(world: THREE.Vector3, normal: THREE.Vector3): void {
+    const [t1, t2] = this.worldTangents(normal);
+    for (let k = 0; k < 70; k++) {
+      // Column: slow, rising embers that cool to deep red. Kept small and dim so the
+      // additive glow doesn't wash out the planet (see GLOW / Flashes.strength).
+      const up = 0.5 + Math.random() * 1.1;
+      const wob = 0.12;
+      const hot = Math.random();
+      this.particles.spawn({
+        x: world.x, y: world.y, z: world.z,
+        vx: normal.x * up + (t1.x * (Math.random() - 0.5) + t2.x * (Math.random() - 0.5)) * wob,
+        vy: normal.y * up + (t1.y * (Math.random() - 0.5) + t2.y * (Math.random() - 0.5)) * wob,
+        vz: normal.z * up + (t1.z * (Math.random() - 0.5) + t2.z * (Math.random() - 0.5)) * wob,
+        r: 0.85, g: 0.3 + hot * 0.35, b: 0.06 + hot * 0.12, size: 0.05 + Math.random() * 0.08,
+        life: 1.1 + Math.random() * 1.0, drag: 1.4, grow: 2,
+      });
+    }
+    for (let k = 0; k < 60; k++) {
+      // Skirt: a flat ring of dust sweeping along the ground.
+      const a = (k / 60) * Math.PI * 2;
+      const sp = 0.9 + Math.random() * 0.5;
+      const dx = t1.x * Math.cos(a) + t2.x * Math.sin(a), dy = t1.y * Math.cos(a) + t2.y * Math.sin(a), dz = t1.z * Math.cos(a) + t2.z * Math.sin(a);
+      this.particles.spawn({
+        x: world.x, y: world.y, z: world.z, vx: dx * sp + normal.x * 0.05, vy: dy * sp + normal.y * 0.05, vz: dz * sp + normal.z * 0.05,
+        r: 0.55, g: 0.38, b: 0.22, size: 0.06 + Math.random() * 0.05, life: 0.9 + Math.random() * 0.4, drag: 1.8, grow: 1.8,
+      });
+    }
+    const gen = this.planetGen;
+    setTimeout(() => {
+      if (gen !== this.planetGen || this.paused) return;
+      this.flashes.spawn(world.clone().addScaledVector(normal, 0.3), 2.2, 0xffd9a0, 0.5);
+      this.rig.shake(0.25);
+    }, 220);
+    sfx.rumble();
+  }
+
+  /** Core Lance: a ring of blue sparks and a sharp metallic crack. */
+  private kineticFx(world: THREE.Vector3, normal: THREE.Vector3): void {
+    const [t1, t2] = this.worldTangents(normal);
+    for (let k = 0; k < 70; k++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 1.2 + Math.random() * 1.6;
+      const dx = t1.x * Math.cos(a) + t2.x * Math.sin(a), dy = t1.y * Math.cos(a) + t2.y * Math.sin(a), dz = t1.z * Math.cos(a) + t2.z * Math.sin(a);
+      this.particles.spawn({
+        x: world.x, y: world.y, z: world.z, vx: (dx + normal.x * 0.5) * sp, vy: (dy + normal.y * 0.5) * sp, vz: (dz + normal.z * 0.5) * sp,
+        r: 0.55, g: 0.9, b: 1, size: 0.03 + Math.random() * 0.04, life: 0.35 + Math.random() * 0.3, drag: 2.2, gravity: 0.5,
+      });
+    }
+    sfx.crack();
+  }
+
+  /** Plasma Mortar: molten droplets arcing out of the pool, with a hiss. */
+  private splashFx(world: THREE.Vector3, normal: THREE.Vector3): void {
+    for (let k = 0; k < 45; k++) {
+      const v = this.randomHemisphere(normal, 0.9).multiplyScalar(0.6 + Math.random() * 0.9);
+      this.particles.spawn({
+        x: world.x, y: world.y, z: world.z, vx: v.x, vy: v.y, vz: v.z,
+        r: 1, g: 0.55 + Math.random() * 0.3, b: 0.12, size: 0.05 + Math.random() * 0.06, life: 0.7 + Math.random() * 0.5, drag: 0.6, gravity: 1.6,
+      });
+    }
+    sfx.sizzle();
+  }
+
+  /** Two unit vectors perpendicular to a world-space normal. */
+  private worldTangents(n: THREE.Vector3): [THREE.Vector3, THREE.Vector3] {
+    const ref = Math.abs(n.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+    const t1 = new THREE.Vector3().crossVectors(n, ref).normalize();
+    return [t1, new THREE.Vector3().crossVectors(n, t1)];
   }
 
   /** Ice shards, a cold flash and a callout when frozen ground breaks. */
@@ -958,7 +1037,8 @@ export class Game {
   private updateBeam(dt: number): void {
     const spec = this.weapon.beam;
     const planet = this.planet;
-    if (!spec || !this.firing || !planet || this.destroyed) { this.beam.hide(); return; }
+    // Released beams shrink away over a few frames instead of vanishing.
+    if (!spec || !this.firing || !planet || this.destroyed) { this.beam.idle(dt); return; }
     // Nova Beam: grows wider, hotter and whiter the longer it is held.
     this.beamHold += dt;
     let radius = spec.drillRadius, width = spec.width;
@@ -971,6 +1051,9 @@ export class Game {
       this.beam.setColor(this.tmpColor.set(spec.color).lerp(this.tmpColor2.set(spec.charge.endColor), charge));
       this.rig.shake(0.012 * charge);
     }
+    // Every beam snaps open over ~0.12 s rather than popping in at full width.
+    const open = Math.min(1, this.beamHold / 0.12);
+    width *= 0.2 + 0.8 * open * open * (3 - 2 * open);
     this.raycaster.setFromCamera(this.pointerNdc, this.camera);
     const ray = this.raycaster.ray;
     // Emitter sits off-screen to the upper right of the view.
@@ -1152,6 +1235,10 @@ export class Game {
 
       this.cooldown -= dt;
       if (this.firing && this.weapon.projectile && this.cooldown <= 0) this.fireProjectile();
+      // Slow weapons (0.5 s+ reload) show a sweep on their button.
+      const proj = this.weapon.projectile;
+      const cd = proj && proj.cooldown >= 0.5 ? Math.max(0, Math.min(1, this.cooldown / proj.cooldown)) : 0;
+      if (cd !== this.lastCooldown) { this.lastCooldown = cd; this.events.onCooldown?.(cd); }
       if (this.firing && this.holdTime >= 0) {
         this.holdTime += rawDt;
         if (this.holdTime > 0.8) { this.holdTime = -1; this.events.onFireHeld?.(this.weapon.id); }
