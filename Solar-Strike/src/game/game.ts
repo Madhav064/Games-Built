@@ -93,6 +93,14 @@ export interface GameEvents {
 
 const SUN_DIR = new THREE.Vector3(1, 0.3, -0.3).normalize();
 
+// Fixed launch spots in camera space (world units right / up / forward from the camera).
+/** Beams and Core Lance: just off the bottom-right edge of the screen. */
+const BEAM_EMITTER = { right: 2.0, up: -1.5, fwd: 0.8 };
+/** Missiles, Mortar, Nuke, Splitter: just behind and below the camera, so shots rise in from the bottom. */
+const LAUNCH_BEHIND = { right: 0.45, up: -0.8, fwd: -0.4 };
+/** Asteroid, Meteor Storm: above the top of the screen. */
+const LAUNCH_ABOVE = { right: 0.6, up: 3.2, fwd: 2.2 };
+
 /** Bloom tuning. Kept subtle: strong bloom washes the screen out during big impacts. */
 const GLOW = { bloomStrength: 0.38, bloomRadius: 0.35, bloomThreshold: 0.9 };
 
@@ -496,6 +504,23 @@ export class Game {
     sfx.launch(spec.split ? 'split' : spec.model, spec.size > 0.2);
     this.shotsThisPlanet++;
     this.events.onShotFired?.();
+  }
+
+  /** Where a shot starts (world space), fixed relative to the camera per weapon (see `ProjectileSpec.launch`). */
+  private launchPoint(spec: ProjectileSpec, targetWorld: THREE.Vector3): THREE.Vector3 {
+    const cam = this.camera;
+    if (spec.launch === 'surface') {
+      // Appears just above the tapped spot.
+      return targetWorld.clone().addScaledVector(cam.position.clone().sub(targetWorld).normalize(), 0.9);
+    }
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(cam.quaternion);
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(cam.quaternion);
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+    const o = spec.launch === 'edge' ? BEAM_EMITTER : spec.launch === 'above' ? LAUNCH_ABOVE : LAUNCH_BEHIND;
+    const p = cam.position.clone().addScaledVector(right, o.right).addScaledVector(up, o.up).addScaledVector(fwd, o.fwd);
+    // Spread weapons (Meteor Storm) come from a small patch around the spot, so the rain isn't one line.
+    if (spec.spread > 0) p.addScaledVector(right, (Math.random() - 0.5) * 1.4).addScaledVector(fwd, (Math.random() - 0.5) * 1.4);
+    return p;
   }
 
   private launch(
