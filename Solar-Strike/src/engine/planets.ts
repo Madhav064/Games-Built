@@ -63,7 +63,8 @@ export const PLANETS: PlanetDef[] = [
     terrainAmp: 1.8,
     terrainFreq: 1.6,
     seaLevel: 0.1,
-    iceCap: 0.82,
+    // Arctic sea ice only (land ice comes from the real map).
+    iceCap: 0.955,
     craters: 0,
     colors: {
       deepOcean: 0x0a2a5e, ocean: 0x14508f, shore: 0xc9b77c,
@@ -74,6 +75,7 @@ export const PLANETS: PlanetDef[] = [
     atmosphere: { color: 0x5aa8ff, strength: 1.0 },
     price: 0,
     orbiters: { satellites: 4, stations: 1 },
+    realMap: 'earth',
   },
   {
     id: 'mars',
