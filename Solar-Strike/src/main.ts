@@ -112,55 +112,67 @@ async function boot(): Promise<void> {
   // ---------------------------------------------------------------------------
   // Flow
   // ---------------------------------------------------------------------------
+  /** Load a planet behind a quick fade. A brand-new player's first planet breaks twice as fast. */
+  const loadBehindFade = (work: () => void) => hud.fadeThrough(() => {
+    work();
+  });
+
   const enterPlanet = async (id: string) => {
     const def = PLANETS.find(p => p.id === id) ?? PLANETS[0];
-    hud.hidePlanets();
-    hud.hideResults();
-    resultsShown = false;
-    rewardedThisBreak = false;
-    progress.state.lastPlanet = def.id;
-    progress.queueSave();
-    // Trials last for one planet; drop back to a weapon the player owns.
-    if (hud.clearTrials()) game.selectWeapon(WEAPONS[0].id);
-    game.loadPlanet(def);
-    if (!inGame) {
-      inGame = true;
-      game.setInputEnabled(true);
-      hud.hideMenu();
-      hud.showHud();
-      game.rig.reset();
-    }
+    await loadBehindFade(() => {
+      hud.hidePlanets();
+      hud.hideResults();
+      resultsShown = false;
+      rewardedThisBreak = false;
+      progress.state.lastPlanet = def.id;
+      progress.queueSave();
+      // Trials last for one planet; drop back to a weapon the player owns.
+      if (hud.clearTrials()) game.selectWeapon(WEAPONS[0].id);
+      game.loadPlanet(def);
+      if (!inGame) {
+        inGame = true;
+        game.setInputEnabled(true);
+        hud.hideMenu();
+        hud.showHud();
+        game.rig.reset();
+      }
+    });
     sdk.gameplayStart();
     refreshPause();
   };
 
-  const goToMenu = () => {
+  /** Back to the main menu, with a fresh copy of `planet` (default: the current one) behind it. */
+  const goToMenu = async (planet?: PlanetDef) => {
     sdk.gameplayStop();
     inGame = false;
     resultsShown = false;
-    hud.hideSettings();
-    hud.hideShop();
-    hud.hidePlanets();
-    hud.hideResults();
-    if (hud.clearTrials()) game.selectWeapon(WEAPONS[0].id);
-    game.setInputEnabled(false);
-    game.timeScale = 1;
-    // A fresh planet spins behind the menu.
-    game.resetPlanet();
-    game.rig.reset();
-    game.rig.zoom(1.25);
-    hud.showMenu();
+    await loadBehindFade(() => {
+      hud.hideSettings();
+      hud.hideShop();
+      hud.hidePlanets();
+      hud.hideResults();
+      if (hud.clearTrials()) game.selectWeapon(WEAPONS[0].id);
+      game.setInputEnabled(false);
+      game.timeScale = 1;
+      // A fresh planet spins behind the menu.
+      if (planet) game.loadPlanet(planet); else game.resetPlanet();
+      game.rig.reset();
+      game.rig.zoom(1.25);
+      hud.showMenu();
+    });
     refreshPause();
   };
 
   /** Rebuild the current planet; a break ad may play if the last one was destroyed. */
   const rebuild = async () => {
-    hud.hideResults();
-    resultsShown = false;
     sdk.gameplayStop();
     if (game.destroyed) await breakAd();
     rewardedThisBreak = false;
-    game.resetPlanet();
+    await loadBehindFade(() => {
+      hud.hideResults();
+      resultsShown = false;
+      game.resetPlanet();
+    });
     resumeIfPlaying();
   };
 
@@ -278,11 +290,10 @@ async function boot(): Promise<void> {
       game.selectWeapon(WEAPONS[0].id);
       hud.selectWeapon(WEAPONS[0].id);
       syncWallet();
-      goToMenu();
-      if (!progress.ownsPlanet(game.planetDef.id)) game.loadPlanet(PLANETS[0]);
+      await goToMenu(progress.ownsPlanet(game.planetDef.id) ? undefined : PLANETS[0]);
       hud.toast('Progress reset');
     },
-    onMainMenu: () => { sfx.click(); goToMenu(); },
+    onMainMenu: () => { sfx.click(); void goToMenu(); },
     onDoubleRewards: async () => {
       if (await rewardedAd()) {
         rewardedThisBreak = true;

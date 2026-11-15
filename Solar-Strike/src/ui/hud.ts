@@ -102,6 +102,8 @@ export class Hud {
   private readonly toastBox: HTMLElement;
   private readonly calloutBox: HTMLElement;
   private readonly busy: HTMLElement;
+  private readonly fadeEl: HTMLElement;
+  private fading = false;
   private dialogCount = 0;
   /** Called when a modal dialog opens or the last one closes (main pauses the game). */
   onDialogChange: ((open: boolean) => void) | null = null;
@@ -271,7 +273,9 @@ export class Hud {
     this.calloutBox = el('div', 'callouts');
     // Blocks all input while an ad is being requested (QA rule).
     this.busy = el('div', 'screen busy-screen hidden', '<div class="spinner"></div>');
-    root.append(this.hud, this.menu, this.planetsScreen, this.results, this.shop, this.settings, this.calloutBox, this.toastBox, this.busy);
+    // Black cover that hides planet loads.
+    this.fadeEl = el('div', 'fade-screen');
+    root.append(this.hud, this.menu, this.planetsScreen, this.results, this.shop, this.settings, this.calloutBox, this.toastBox, this.busy, this.fadeEl);
     this.renderWeapons();
   }
 
@@ -405,6 +409,25 @@ export class Hud {
   }
 
   setBusy(on: boolean): void { this.busy.classList.toggle('hidden', !on); }
+
+  /**
+   * Fade to black, run `work` (e.g. load a planet), then fade back in. Clicks are blocked
+   * while the cover is up. A second call during a fade just runs its work straight away.
+   */
+  async fadeThrough(work: () => void): Promise<void> {
+    if (this.fading) { work(); return; }
+    this.fading = true;
+    const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
+    try {
+      this.fadeEl.classList.add('on');
+      await wait(170);
+      work();
+      await wait(70); // let the new planet render before revealing it
+    } finally {
+      this.fadeEl.classList.remove('on');
+      this.fading = false;
+    }
+  }
 
   setDevice(type: 'desktop' | 'tablet' | 'mobile'): void {
     this.hint.innerHTML = type === 'desktop'

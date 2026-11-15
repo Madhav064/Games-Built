@@ -294,6 +294,10 @@ html, body {
   .set-row { padding: 6px 2px; }
 }
 
+/* ---------- Planet-load fade ---------- */
+.fade-screen { position: absolute; inset: 0; background: var(--bg); opacity: 0; transition: opacity .17s ease; pointer-events: none; z-index: 30; }
+.fade-screen.on { opacity: 1; pointer-events: auto; }
+
 /* ---------- Home button beside the rank badge ---------- */
 .hud-left-row { display: flex; align-items: center; gap: 6px; }
 .home-btn { color: var(--text); }
