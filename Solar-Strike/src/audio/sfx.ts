@@ -14,7 +14,7 @@ function ensure(): AudioContext | null {
       ctx = new AudioContext();
       master = ctx.createGain();
       // setMuted() may have run before the context existed (saved preference at boot).
-      master.gain.value = muted || adMuted ? 0 : 0.9 * volume;
+      master.gain.value = silent() ? 0 : 0.9 * volume;
       const comp = ctx.createDynamicsCompressor();
       comp.threshold.value = -14;
       comp.ratio.value = 6;
@@ -30,9 +30,18 @@ function ensure(): AudioContext | null {
   return ctx;
 }
 
+/** Dev-only hard mute (the `?mute` URL flag): nothing can turn sound back on. */
+let devMuted = false;
+
+function silent(): boolean { return muted || adMuted || devMuted; }
+
 function applyMute(): void {
-  if (master && ctx) master.gain.setTargetAtTime(muted || adMuted ? 0 : 0.9 * volume, ctx.currentTime, 0.02);
+  if (master && ctx) master.gain.setTargetAtTime(silent() ? 0 : 0.9 * volume, ctx.currentTime, 0.02);
 }
+
+export function setDevMute(on: boolean): void { devMuted = on; applyMute(); }
+/** True when nothing will be heard (any mute: player, platform, ad or dev). */
+export function isSilent(): boolean { return silent(); }
 
 export function setMuted(m: boolean): void { muted = m; applyMute(); }
 /** Master and effects volume, each 0..1. (Music, when added, gets its own bus under master.) */

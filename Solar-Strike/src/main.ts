@@ -22,6 +22,9 @@ const COINS_PER_XP = 1;
 const FREE_COINS = 150;
 const FREE_COINS_COOLDOWN = 180_000;
 
+// Dev only: `?mute` silences everything from the first frame (survives Vite reloads, never ships).
+if (import.meta.env.DEV && new URLSearchParams(location.search).has('mute')) sfx.setDevMute(true);
+
 async function boot(): Promise<void> {
   await sdk.initSDK();
   sdk.loadingStart();
@@ -353,12 +356,15 @@ async function boot(): Promise<void> {
   // this ships to CrazyGames.
   if (import.meta.env.DEV) {
     const giveCoins = (n: number) => { progress.addCoins(n); progress.saveNow(); syncWallet(); hud.toast(`DEV: +${fmt(n)} ${COIN}`, 'xp'); };
-    Object.assign(window, { __game: game, __hud: hud, __enter: enterPlanet, __progress: progress, __sync: syncWallet, __coins: giveCoins });
+    Object.assign(window, { __game: game, __hud: hud, __enter: enterPlanet, __progress: progress, __sync: syncWallet, __coins: giveCoins, __sfx: sfx });
     // http://localhost:5191/?coins=50000 adds coins on load.
-    const devCoins = Number(new URLSearchParams(location.search).get('coins'));
+    const params = new URLSearchParams(location.search);
+    const devCoins = Number(params.get('coins'));
     if (devCoins > 0) {
       giveCoins(devCoins);
-      history.replaceState(null, '', location.pathname); // so a refresh doesn't add them again
+      // Drop just `coins` so a refresh doesn't add them again (keeps `?mute`).
+      params.delete('coins');
+      history.replaceState(null, '', location.pathname + (params.size ? `?${params}` : ''));
     }
   }
 
