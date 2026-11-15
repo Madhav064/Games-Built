@@ -208,7 +208,7 @@ export const WEAPONS: WeaponDef[] = [
     color: '#00e5ff',
     icon: '<circle cx="12" cy="15.6" r="6.6" fill="none" stroke="currentColor" stroke-width="1.8" opacity=".55"/><circle cx="12" cy="15.6" r="2.3" fill="currentColor"/><path d="M12 1.6V12" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="M8.8 9.6 12 13.2l3.2-3.6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>',
     projectile: {
-      speed: 13, size: 0.16, model: 'rod', trailColor: 0x70f0ff, cluster: 1, spread: 0, cooldown: 1.3,
+      speed: 13, size: 0.16, model: 'rod', trailColor: 0x70f0ff, cluster: 1, spread: 0, cooldown: 1.3, launch: 'edge',
       isKinetic: true,
       impact: { crater: 3, heatRadius: 1.6, heat: 1.2, debris: 60, debrisSpeed: 1.6, fire: 120, flash: 3.0, shockwave: 12, shake: 0.5, boom: 0.6, stability: 0.05 },
       lance: { depth: 0.9, radius: 2.4, cavity: 7.5 },
