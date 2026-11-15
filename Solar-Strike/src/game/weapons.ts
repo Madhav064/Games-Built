@@ -223,7 +223,7 @@ export const WEAPONS: WeaponDef[] = [
     color: '#c056ff',
     icon: '<circle cx="12" cy="12" r="5" fill="currentColor"/><circle cx="12" cy="12" r="3.3" fill="#0b0f1e"/><ellipse cx="12" cy="12" rx="10.6" ry="3.8" fill="none" stroke="currentColor" stroke-width="2" transform="rotate(-20 12 12)"/>',
     projectile: {
-      speed: 4.2, size: 0.28, model: 'singularity', trailColor: 0xcc44ff, cluster: 1, spread: 0, cooldown: 2.0,
+      speed: 4.2, size: 0.28, model: 'singularity', trailColor: 0xcc44ff, cluster: 1, spread: 0, cooldown: 2.0, launch: 'surface',
       isBlackHole: true,
       impact: { crater: 12, heatRadius: 0.8, heat: 0.1, debris: 50, debrisSpeed: 0.4, fire: 60, flash: 5.5, shockwave: 30, shake: 0.9, boom: 1.0, stability: 0.12 },
     },
