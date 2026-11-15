@@ -463,9 +463,7 @@ export class Game {
     const orbiter = this.aimOrbiter();
     if (orbiter) {
       this.cooldown = spec.cooldown;
-      const toCam = this.camera.position.clone().sub(orbiter.pos).normalize();
-      const side = new THREE.Vector3().crossVectors(toCam, this.camera.up).normalize();
-      const start = orbiter.pos.clone().addScaledVector(toCam, 4).addScaledVector(side, (Math.random() < 0.5 ? -1 : 1) * 3);
+      const start = this.launchPoint(spec, orbiter.pos);
       const vel = orbiter.pos.clone().sub(start).normalize().multiplyScalar(spec.speed);
       this.launch(spec, spec.impact, start, vel, planet.worldToGrid(orbiter.pos, new THREE.Vector3()), { orbiter, homing: 10 });
       sfx.launch(spec.split ? 'split' : spec.model, spec.size > 0.2);
