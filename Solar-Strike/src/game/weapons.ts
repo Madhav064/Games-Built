@@ -217,6 +217,20 @@ export const WEAPONS: WeaponDef[] = [
     },
   },
   {
+    id: 'sleeper',
+    name: 'Sleeper Charges',
+    category: 'Projectiles',
+    blurb: 'Plant up to 12 charges. They wait until you press Detonate, or until any blast reaches them.',
+    price: 2000,
+    color: '#ff3b5c',
+    icon: '<rect x="7" y="11" width="10" height="10" rx="2" fill="currentColor"/><circle cx="12" cy="8.4" r="2.2" fill="currentColor"/><path d="M6.6 5.4a7.4 7.4 0 0 1 10.8 0M8.9 7.4a4.2 4.2 0 0 1 6.2 0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M10 15.8h4" stroke="#0b0f1e" stroke-width="1.8" stroke-linecap="round" opacity=".55"/>',
+    projectile: {
+      speed: 7, size: 0.08, model: 'charge', trailColor: 0xff5070, cluster: 1, spread: 0, cooldown: 0.25,
+      sleeper: true,
+      impact: { crater: 5, heatRadius: 1.8, heat: 1.3, debris: 30, debrisSpeed: 1.0, fire: 120, flash: 2.0, shockwave: 8, shake: 0.25, boom: 0.4, stability: 0.025 },
+    },
+  },
+  {
     id: 'black-hole',
     name: 'Black Hole',
     category: 'Cosmic',
