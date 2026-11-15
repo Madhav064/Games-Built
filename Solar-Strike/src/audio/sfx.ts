@@ -158,7 +158,7 @@ function noiseBurst(filter: BiquadFilterType, freq: number, q: number, dur: numb
   src.stop(t + dur + 0.05);
 }
 
-export type LaunchKind = 'missile' | 'warhead' | 'blob' | 'rock' | 'rod' | 'singularity' | 'split';
+export type LaunchKind = 'missile' | 'warhead' | 'blob' | 'rock' | 'rod' | 'singularity' | 'split' | 'charge';
 
 /** Each projectile family gets its own launch sound. */
 export function launch(kind: LaunchKind, big = false): void {
@@ -170,6 +170,7 @@ export function launch(kind: LaunchKind, big = false): void {
     case 'rod': tone('triangle', 2200, 700, 0.35, 0.14); noiseBurst('bandpass', 3000, 4, 0.25, 0.1); whoosh(0.3, 1.8); break;
     case 'singularity': tone('sine', 260, 70, 0.9, 0.22); tone('sine', 266, 72, 0.9, 0.12); break;
     case 'split': whoosh(0.5, 1); break;
+    case 'charge': whoosh(0.35, 1.5); tone('square', 900, 900, 0.06, 0.05); break;
   }
 }
 

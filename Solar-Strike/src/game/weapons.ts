@@ -52,7 +52,7 @@ export interface ProjectileSpec {
   speed: number;
   /** Visual size (world). */
   size: number;
-  model: 'missile' | 'warhead' | 'rock' | 'rod' | 'singularity' | 'blob';
+  model: 'missile' | 'warhead' | 'rock' | 'rod' | 'singularity' | 'blob' | 'charge';
   trailColor: number;
   /** Projectiles per click. */
   cluster: number;
@@ -79,6 +79,8 @@ export interface ProjectileSpec {
   split?: { count: number; ringRadius: number; impact: ImpactSpec };
   /** Drills a shaft toward the core and blows a cavity at the bottom. */
   lance?: { depth: number; radius: number; cavity: number };
+  /** Sticks in the ground instead of exploding; `impact` is used when it finally goes off. */
+  sleeper?: boolean;
 }
 
 export interface WeaponDef {
