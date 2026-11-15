@@ -483,19 +483,12 @@ export class Game {
         target = this.surfacePoint(target) ?? hit.clone();
       }
       const targetWorld = planet.gridToWorld(target, new THREE.Vector3());
-      // Launch from off-screen, from the camera's side of the planet.
-      const toCam = this.camera.position.clone().sub(targetWorld).normalize();
-      const side = new THREE.Vector3().crossVectors(toCam, this.camera.up).normalize();
-      const up = new THREE.Vector3().crossVectors(side, toCam).normalize();
-      const dist = spec.model === 'rock' ? 10 : 7;
+      // Every shot of a weapon leaves from the same spot relative to the camera.
       const lob = (spec.homing ?? 6) < 3;
-      const start = targetWorld.clone()
-        .addScaledVector(toCam, dist * (lob ? 0.35 : 0.55))
-        .addScaledVector(side, (Math.random() < 0.5 ? -1 : 1) * dist * (0.5 + Math.random() * 0.3))
-        .addScaledVector(up, lob ? -dist * 0.15 : dist * (0.25 + Math.random() * 0.35));
+      const start = this.launchPoint(spec, targetWorld);
       const vel = targetWorld.clone().sub(start).normalize();
       // Lobbed shots leave upward and curve down onto the target.
-      if (lob) vel.addScaledVector(up, 1.1).normalize();
+      if (lob) vel.addScaledVector(new THREE.Vector3(0, 1, 0).applyQuaternion(this.camera.quaternion), 1.1).normalize();
       // Waypoint on the camera ray above the target (grid space, so it turns with the planet).
       const toCamG = planet.worldToGrid(this.camera.position, new THREE.Vector3()).sub(target).normalize();
       const approach = target.clone().addScaledVector(toCamG, lob ? 20 : 12);
