@@ -62,6 +62,12 @@ export interface ProjectileSpec {
   cooldown: number;
   /** How hard it steers toward the target (default 6). Low values give lobbed arcs. */
   homing?: number;
+  /**
+   * Where every shot starts, fixed relative to the camera so a weapon always fires from the same spot:
+   * 'behind' (just behind and below the view, default), 'above' (above the top of the screen),
+   * 'edge' (the bottom-right edge, same as the beams) or 'surface' (right at the tap point).
+   */
+  launch?: 'behind' | 'above' | 'edge' | 'surface';
   impact: ImpactSpec;
   isBlackHole?: boolean;
   isKinetic?: boolean;
