@@ -102,8 +102,11 @@ export class Hud {
   private readonly toastBox: HTMLElement;
   private readonly calloutBox: HTMLElement;
   private readonly busy: HTMLElement;
+  private readonly tapPrompt: HTMLElement;
+  private readonly tip: HTMLElement;
   private readonly fadeEl: HTMLElement;
   private fading = false;
+  private device: 'desktop' | 'tablet' | 'mobile' = 'desktop';
   private dialogCount = 0;
   /** Called when a modal dialog opens or the last one closes (main pauses the game). */
   onDialogChange: ((open: boolean) => void) | null = null;
@@ -273,9 +276,13 @@ export class Hud {
     this.calloutBox = el('div', 'callouts');
     // Blocks all input while an ad is being requested (QA rule).
     this.busy = el('div', 'screen busy-screen hidden', '<div class="spinner"></div>');
+    // First-time "tap the planet" pointer and one-line tips above the weapon bar.
+    this.tapPrompt = el('div', 'tap-prompt hidden', '<div class="tap-ring"></div><div class="tap-ring delay"></div><div class="tap-text"></div>');
+    this.tip = el('div', 'tip hidden');
+    bottom.prepend(this.tip);
     // Black cover that hides planet loads.
     this.fadeEl = el('div', 'fade-screen');
-    root.append(this.hud, this.menu, this.planetsScreen, this.results, this.shop, this.settings, this.calloutBox, this.toastBox, this.busy, this.fadeEl);
+    root.append(this.hud, this.tapPrompt, this.menu, this.planetsScreen, this.results, this.shop, this.settings, this.calloutBox, this.toastBox, this.busy, this.fadeEl);
     this.renderWeapons();
   }
 
@@ -429,7 +436,26 @@ export class Hud {
     }
   }
 
+  /** "Tap the planet!" pointer for brand-new players. */
+  showTapPrompt(on: boolean): void {
+    (this.tapPrompt.querySelector('.tap-text') as HTMLElement).textContent =
+      this.device === 'desktop' ? 'Click the planet!' : 'Tap the planet!';
+    this.tapPrompt.classList.toggle('hidden', !on);
+  }
+
+  /** One-line tip above the weapon bar; `weaponId` makes that weapon's button pulse. Null hides it. */
+  showTip(html: string | null, weaponId: string | null = null): void {
+    this.tip.classList.toggle('hidden', !html);
+    if (html) this.tip.innerHTML = html;
+    this.pulseWeapon = weaponId;
+    this.weaponBar.querySelectorAll<HTMLElement>('.weapon-btn').forEach(b => b.classList.toggle('pulse', b.dataset.weapon === weaponId));
+  }
+  private pulseWeapon: string | null = null;
+
+  get deviceType(): 'desktop' | 'tablet' | 'mobile' { return this.device; }
+
   setDevice(type: 'desktop' | 'tablet' | 'mobile'): void {
+    this.device = type;
     this.hint.innerHTML = type === 'desktop'
       ? 'Click to fire &middot; right-drag or arrow keys to rotate &middot; scroll to zoom'
       : 'Tap to fire &middot; two fingers to rotate &middot; pinch to zoom';
@@ -487,7 +513,8 @@ export class Hud {
 
   get dialogOpen(): boolean { return this.dialogCount > 0; }
 
-  showResults(planet: PlanetDef, killed: number, coins: number, canDouble: boolean, shotsFired: number): void {
+  /** `extras`: additional reward lines, e.g. the one-time starter bonus. */
+  showResults(planet: PlanetDef, killed: number, coins: number, canDouble: boolean, shotsFired: number, extras: { value: string; label: string }[] = []): void {
     this.hidePlanets();
     this.results.innerHTML = '';
     const panel = el('div', 'panel results-panel');
@@ -502,6 +529,10 @@ export class Hud {
     );
     if (shotsFired > 0) stats.append(this.stat(shotsFired.toLocaleString(), 'shots fired'));
     panel.append(stats);
+    for (const x of extras) {
+      const row = el('div', 'results-extra', `<span>${x.label}</span><b>${x.value}</b>`);
+      panel.append(row);
+    }
     const actions = el('div', 'results-actions');
     if (canDouble) {
       const dbl = el('button', 'btn btn-reward', `<span class="ad-tag">AD</span> 2x coins &amp; XP`);
@@ -609,6 +640,7 @@ export class Hud {
         ? `${svg(w.icon)}<span>${w.name}</span>`
         : `${svg(w.icon)}<i class="wb-lock">${svg(ICONS.lock)}</i><em class="${this.coins >= w.price ? 'can' : ''}">${COIN}${formatCoins(w.price)}</em>`;
       if (this.trialWeapons.has(w.id) && !this.ownedWeapons.has(w.id)) b.classList.add('trial');
+      if (w.id === this.pulseWeapon) b.classList.add('pulse');
       b.onclick = () => {
         if (available) this.h.onSelectWeapon(w);
         else this.h.onLockedWeapon(w);

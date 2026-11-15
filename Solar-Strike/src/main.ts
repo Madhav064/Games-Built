@@ -21,6 +21,8 @@ const COINS_PER_XP = 1;
 /** Coins from the shop's rewarded-ad bundle, and how often it can be claimed. */
 const FREE_COINS = 150;
 const FREE_COINS_COOLDOWN = 180_000;
+/** One-time coins on a new player's first results screen. */
+const STARTER_COINS = 300;
 
 // Dev only: `?mute` silences everything from the first frame (survives Vite reloads, never ships).
 if (import.meta.env.DEV && new URLSearchParams(location.search).has('mute')) sfx.setDevMute(true);
@@ -42,6 +44,8 @@ async function boot(): Promise<void> {
   let lastDestroyXp = 0;
   let lastDestroyKilled = 0;
   let lastDestroyShots = 0;
+  /** Extra reward lines on the results screen (the one-time starter bonus). */
+  let lastDestroyExtras: { value: string; label: string }[] = [];
 
   const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
 
@@ -112,8 +116,29 @@ async function boot(): Promise<void> {
   // ---------------------------------------------------------------------------
   // Flow
   // ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // First-minute help: "tap the planet" pointer, then two one-line tips.
+  // ---------------------------------------------------------------------------
+  const refreshTips = () => {
+    const s = progress.state;
+    const on = inGame && !resultsShown && !game.destroyed && s.settings.hints;
+    hud.showTapPrompt(on && s.tipsDone === 0);
+    const verb = hud.deviceType === 'desktop' ? 'click' : 'tap';
+    if (!on || s.tipsDone === 0 || s.tipsDone >= 3) hud.showTip(null);
+    else if (s.tipsDone === 1) hud.showTip(`Nice! Now <b>hold</b> your ${verb} to fire a volley`, game.weapon.projectile ? null : 'missile');
+    else hud.showTip('Try the free <b>Laser</b>: select it, then hold and drag across the planet', game.weapon.id === 'laser' ? null : 'laser');
+  };
+  /** Marks tip `n` (1..3) done if it's the current one. */
+  const completeTip = (n: number) => {
+    if (progress.state.tipsDone !== n - 1) return;
+    progress.state.tipsDone = n;
+    progress.queueSave();
+    refreshTips();
+  };
+
   /** Load a planet behind a quick fade. A brand-new player's first planet breaks twice as fast. */
   const loadBehindFade = (work: () => void) => hud.fadeThrough(() => {
+    game.setEasyBreak(progress.state.planetsDestroyed === 0);
     work();
   });
 
@@ -137,6 +162,7 @@ async function boot(): Promise<void> {
         game.rig.reset();
       }
     });
+    refreshTips();
     sdk.gameplayStart();
     refreshPause();
   };
@@ -146,6 +172,7 @@ async function boot(): Promise<void> {
     sdk.gameplayStop();
     inGame = false;
     resultsShown = false;
+    refreshTips();
     await loadBehindFade(() => {
       hud.hideSettings();
       hud.hideShop();
@@ -173,6 +200,7 @@ async function boot(): Promise<void> {
       resultsShown = false;
       game.resetPlanet();
     });
+    refreshTips();
     resumeIfPlaying();
   };
 
@@ -225,7 +253,7 @@ async function boot(): Promise<void> {
       const pick = await hud.choose(`Unlock ${p.name}?`, body, [{ label: `${COIN} ${fmt(p.price)}`, cls: 'btn-buy', disabled: !can }]);
       if (pick === 0 && buyPlanet(p)) void selectPlanet(p);
     },
-    onSelectWeapon: w => { sfx.click(); game.selectWeapon(w.id); hud.selectWeapon(w.id); },
+    onSelectWeapon: w => { sfx.click(); game.selectWeapon(w.id); hud.selectWeapon(w.id); refreshTips(); },
     onLockedWeapon: async w => {
       sfx.click();
       const coins = progress.state.coins;
@@ -280,6 +308,7 @@ async function boot(): Promise<void> {
     onSettingsChange: s => {
       progress.state.settings = s;
       progress.queueSave();
+      refreshTips();
       applySettings(s);
     },
     onResetProgress: async () => {
@@ -291,6 +320,9 @@ async function boot(): Promise<void> {
       hud.selectWeapon(WEAPONS[0].id);
       syncWallet();
       await goToMenu(progress.ownsPlanet(game.planetDef.id) ? undefined : PLANETS[0]);
+      // Fresh start: back to the new-player Missile.
+      game.selectWeapon('missile');
+      hud.selectWeapon('missile');
       hud.toast('Progress reset');
     },
     onMainMenu: () => { sfx.click(); void goToMenu(); },
@@ -315,7 +347,7 @@ async function boot(): Promise<void> {
       sfx.click();
       hud.hidePlanets();
       if (resultsShown) {
-        hud.showResults(game.planetDef, lastDestroyKilled, lastDestroyXp * COINS_PER_XP, sdk.canShowRewarded() && !rewardedThisBreak, lastDestroyShots);
+        hud.showResults(game.planetDef, lastDestroyKilled, lastDestroyXp * COINS_PER_XP, sdk.canShowRewarded() && !rewardedThisBreak, lastDestroyShots, lastDestroyExtras);
       }
       resumeIfPlaying();
     },
@@ -344,6 +376,7 @@ async function boot(): Promise<void> {
   game.events.onShotFired = () => {
     progress.state.shotsFired++;
     progress.queueSave();
+    completeTip(1);
   };
   game.events.onPlanetDestroyed = ({ planet, killed, xp, shots }) => {
     if (resultsShown || !inGame) return;
@@ -354,8 +387,21 @@ async function boot(): Promise<void> {
     lastDestroyXp = xp;
     lastDestroyKilled = killed;
     lastDestroyShots = shots;
+    lastDestroyExtras = [];
+    // One-time starter coins so a new player can unlock a first weapon right away.
+    if (!progress.state.starterBonus) {
+      progress.state.starterBonus = true;
+      progress.addCoins(STARTER_COINS);
+      syncWallet();
+      lastDestroyExtras.push({ label: 'Starter bonus', value: `${COIN} +${fmt(STARTER_COINS)}` });
+    }
     sdk.gameplayStop();
-    hud.showResults(planet, killed, xp * COINS_PER_XP, sdk.canShowRewarded(), shots);
+    refreshTips();
+    hud.showResults(planet, killed, xp * COINS_PER_XP, sdk.canShowRewarded(), shots, lastDestroyExtras);
+  };
+  game.events.onFireHeld = weaponId => {
+    if (WEAPONS.find(x => x.id === weaponId)?.projectile) completeTip(2);
+    if (weaponId === 'laser') completeTip(3);
   };
 
   // Audio and settings: saved preferences, the CrazyGames mute setting, and ads.
@@ -384,6 +430,8 @@ async function boot(): Promise<void> {
   game.setInputEnabled(false);
   game.loadPlanet(PLANETS[0]);
   game.rig.dist = 9; game.rig.zoom(1.25);
+  // New players start on the Missile: one tap, instant boom.
+  if (progress.state.tipsDone === 0) { game.selectWeapon('missile'); hud.selectWeapon('missile'); }
   game.start();
   sdk.loadingStop();
   // Build the other owned planets in a background worker so switching to them is quick.

@@ -27,6 +27,10 @@ export interface SaveState {
   lastPlanet: string;
   /** Date.now() when the shop's free-coins ad was last watched. */
   freeCoinsAt: number;
+  /** First-minute tips completed (0..3): tap to fire, hold for a volley, try the Laser. */
+  tipsDone: number;
+  /** The one-time starter coins have been given. */
+  starterBonus: boolean;
   settings: Settings;
 }
 
@@ -43,6 +47,8 @@ function defaults(): SaveState {
     shotsFired: 0,
     lastPlanet: PLANETS[0].id,
     freeCoinsAt: 0,
+    tipsDone: 0,
+    starterBonus: false,
     settings: { ...DEFAULT_SETTINGS },
   };
 }
@@ -86,6 +92,9 @@ export class Progress {
         Object.assign(s, saved);
         s.settings = { ...DEFAULT_SETTINGS, ...(saved.settings ?? {}) };
         if (saved.muted !== undefined && !saved.settings) s.settings.muted = saved.muted; // pre-shop saves
+        // Players from before the first-minute tips already know the basics.
+        if (saved.tipsDone === undefined && (s.shotsFired > 0 || s.planetsDestroyed > 0)) s.tipsDone = 3;
+        if (saved.starterBonus === undefined && s.planetsDestroyed > 0) s.starterBonus = true;
         // Free items are always owned, even ones added after the save was made.
         for (const w of WEAPONS) if (w.price === 0 && !s.ownedWeapons.includes(w.id)) s.ownedWeapons.push(w.id);
         for (const p of PLANETS) if (p.price === 0 && !s.ownedPlanets.includes(p.id)) s.ownedPlanets.push(p.id);

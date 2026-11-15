@@ -298,6 +298,19 @@ html, body {
 .fade-screen { position: absolute; inset: 0; background: var(--bg); opacity: 0; transition: opacity .17s ease; pointer-events: none; z-index: 30; }
 .fade-screen.on { opacity: 1; pointer-events: auto; }
 
+/* ---------- First-minute helpers ---------- */
+.tap-prompt { position: absolute; left: 50%; top: 50%; width: 0; height: 0; pointer-events: none; z-index: 3; }
+.tap-ring { position: absolute; left: -36px; top: -36px; width: 72px; height: 72px; border-radius: 50%; border: 3px solid rgba(255,190,90,.9); box-shadow: 0 0 18px rgba(255,150,50,.6); animation: tapring 1.4s ease-out infinite; }
+.tap-ring.delay { animation-delay: .7s; }
+.tap-text { position: absolute; top: 52px; left: 0; transform: translateX(-50%); white-space: nowrap; font-weight: 900; font-size: 18px; letter-spacing: .06em; color: #fff; text-shadow: 0 0 14px rgba(255,140,40,.9), 0 2px 4px #000; animation: tapbob 1.4s ease-in-out infinite; }
+@keyframes tapring { 0% { transform: scale(.35); opacity: 1; } 100% { transform: scale(1.5); opacity: 0; } }
+@keyframes tapbob { 50% { transform: translate(-50%, -4px); } }
+.tip { font-size: 14px; font-weight: 800; color: #fff; background: linear-gradient(180deg, rgba(255,140,50,.28), rgba(255,110,40,.16)); border: 1px solid rgba(255,170,80,.55); border-radius: 999px; padding: 7px 16px; text-align: center; box-shadow: 0 0 22px rgba(255,130,40,.25); animation: pop .3s ease-out; pointer-events: none; }
+.weapon-btn.pulse { animation: wpulse 1.1s ease-in-out infinite; }
+@keyframes wpulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,180,80,.0); } 50% { box-shadow: 0 0 0 3px rgba(255,180,80,.9), 0 0 18px rgba(255,150,50,.7); } }
+.results-extra { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: -6px 0 16px; padding: 10px 14px; border-radius: 12px; background: linear-gradient(90deg, rgba(255,200,80,.16), rgba(255,200,80,.06)); border: 1px solid rgba(255,200,80,.35); font-size: 14px; font-weight: 700; }
+.results-extra b { color: #ffe08a; font-size: 17px; }
+
 /* ---------- Home button beside the rank badge ---------- */
 .hud-left-row { display: flex; align-items: center; gap: 6px; }
 .home-btn { color: var(--text); }

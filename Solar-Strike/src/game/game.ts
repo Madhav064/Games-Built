@@ -73,6 +73,8 @@ export interface GameEvents {
   onPlanetDestroyed?: (s: { planet: PlanetDef; killed: number; xp: number; shots: number }) => void;
   onPlanetLoaded?: (p: PlanetDef) => void;
   onShotFired?: () => void;
+  /** Fire has been held down for a moment with this weapon (once per press). */
+  onFireHeld?: (weaponId: string) => void;
   /** Big centre-screen callout, e.g. "SHATTER!". */
   onCallout?: (text: string) => void;
 }
@@ -117,6 +119,8 @@ export class Game {
   private shatterCalloutAt = 0;
   private readonly impactLight: THREE.PointLight;
   private firing = false;
+  /** Seconds fire has been held this press (-1 once onFireHeld has been sent). */
+  private holdTime = 0;
   private pointerNdc = new THREE.Vector2();
   private cooldown = 0;
   private stopBeamSound: (() => void) | null = null;
@@ -390,6 +394,7 @@ export class Game {
 
   stopFiring(): void {
     this.firing = false;
+    this.holdTime = 0;
     this.beamAcc = 0;
     this.beamHold = 0;
     this.beam.hide();
@@ -1147,6 +1152,10 @@ export class Game {
 
       this.cooldown -= dt;
       if (this.firing && this.weapon.projectile && this.cooldown <= 0) this.fireProjectile();
+      if (this.firing && this.holdTime >= 0) {
+        this.holdTime += rawDt;
+        if (this.holdTime > 0.8) { this.holdTime = -1; this.events.onFireHeld?.(this.weapon.id); }
+      }
       this.updateBeam(dt);
       this.updateProjectiles(dt);
       this.updateSingularities(dt);
@@ -1232,6 +1241,9 @@ export class Game {
    * `easy` (a brand-new player's first planet) halves the damage needed.
    */
   breakAt = { mass: 0.6, core: 0.8 };
+  setEasyBreak(easy: boolean): void {
+    this.breakAt = easy ? { mass: 0.8, core: 0.9 } : { mass: 0.6, core: 0.8 };
+  }
 
   private damageStability(amount: number): void {
     if (this.destroyed || !this.planet) return;
