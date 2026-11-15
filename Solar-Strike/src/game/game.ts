@@ -1169,11 +1169,12 @@ export class Game {
     width *= 0.2 + 0.8 * open * open * (3 - 2 * open);
     this.raycaster.setFromCamera(this.pointerNdc, this.camera);
     const ray = this.raycaster.ray;
-    // Emitter sits off-screen to the upper right of the view.
+    // Emitter sits just off the bottom-right edge of the view, the same spot every time.
     const right = this.tmpA.set(1, 0, 0).applyQuaternion(this.camera.quaternion);
     const up = this.tmpB.set(0, 1, 0).applyQuaternion(this.camera.quaternion);
-    const from = this.camera.position.clone().addScaledVector(right, 2.2).addScaledVector(up, 1.6)
-      .addScaledVector(ray.direction, 0.8);
+    const fwd = this.tmpC.set(0, 0, -1).applyQuaternion(this.camera.quaternion);
+    const from = this.camera.position.clone().addScaledVector(right, BEAM_EMITTER.right)
+      .addScaledVector(up, BEAM_EMITTER.up).addScaledVector(fwd, BEAM_EMITTER.fwd);
     let hitG = planet.raycast(ray.origin, ray.direction, new THREE.Vector3());
     // A satellite or moon in front of the beam burns (about 6 hit points a second).
     const oh = this.orbiters?.raycast(ray.origin, ray.direction);
