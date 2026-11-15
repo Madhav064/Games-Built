@@ -92,7 +92,7 @@ export const WEAPONS: WeaponDef[] = [
     blurb: 'Hold and drag to carve a thin glowing trench.',
     price: 0,
     color: '#ff4d4d',
-    icon: '<path d="M3 21 L14 10" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><circle cx="16.5" cy="7.5" r="4" fill="currentColor" opacity=".35"/><circle cx="16.5" cy="7.5" r="2" fill="currentColor"/>',
+    icon: '<path d="M3.5 20.5 13 11" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><circle cx="16" cy="8" r="3.4" fill="currentColor"/><path d="M16 1.8v1.8M22.2 8h-1.8M20.4 3.6l-1.3 1.3M20.4 12.4l-1.3-1.3M11.6 3.6l1.3 1.3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>',
     beam: { width: 0.05, drillRate: 16, drillRadius: 2.4, heat: 0.9, color: 0xff3030, pitch: 1 },
   },
   {
@@ -102,7 +102,7 @@ export const WEAPONS: WeaponDef[] = [
     blurb: 'Fast guided missile. Tap for one, hold for a volley.',
     price: 0,
     color: '#ffd166',
-    icon: '<path d="M5 19 L15 9 L19 5 L18 10 L9 19 Z" fill="currentColor"/><path d="M5 19 L3 21 M7 21 L5 19 L3 17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
+    icon: '<path d="M14.2 4.6c2.5-1.2 5-1.6 5.9-1.1.5.9.1 3.4-1.1 5.9L12.4 16l-4.4-4.4z" fill="currentColor"/><circle cx="15.8" cy="8.2" r="1.5" fill="#0b0f1e" opacity=".55"/><path d="M8.2 11.8 4.4 12.4 3 14.6l4.3.6M12.2 15.8l-.6 3.8L9.4 21l-.6-4.3" fill="currentColor" opacity=".75"/><path d="M7.2 16.8 3.6 20.4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" opacity=".55"/>',
     projectile: {
       speed: 7, size: 0.07, model: 'missile', trailColor: 0xffa040, cluster: 1, spread: 0, cooldown: 0.18,
       impact: { crater: 3.2, heatRadius: 1.8, heat: 1.2, debris: 14, debrisSpeed: 0.9, fire: 60, flash: 0.9, shockwave: 0, shake: 0.12, boom: 0.15 },
@@ -115,7 +115,7 @@ export const WEAPONS: WeaponDef[] = [
     blurb: 'Lobs molten plasma. Leaves lava pools that keep burning and spreading.',
     price: 300,
     color: '#ff8a30',
-    icon: '<path d="M4 20 Q9 4 18 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2 2.4" stroke-linecap="round"/><circle cx="18" cy="9" r="3.4" fill="currentColor"/><path d="M3 21h8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>',
+    icon: '<path d="M3 20.5c1.8-7.6 6.4-11.7 11.4-12.3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="0.1 3.4"/><circle cx="17.6" cy="8" r="4.3" fill="currentColor"/><circle cx="16.4" cy="6.8" r="1.5" fill="#fff" opacity=".55"/><path d="M15.4 15v2.4M19.6 14v3.8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>',
     projectile: {
       speed: 3.6, size: 0.1, model: 'blob', trailColor: 0xff8a30, cluster: 1, spread: 0, cooldown: 0.7, homing: 1.6,
       impact: { crater: 2.5, heatRadius: 2, heat: 2.2, debris: 10, debrisSpeed: 0.8, fire: 120, flash: 1.6, shockwave: 0, shake: 0.15, boom: 0.3 },
@@ -129,7 +129,7 @@ export const WEAPONS: WeaponDef[] = [
     blurb: 'Freezes the ground solid. Frozen rock SHATTERS when anything hits it.',
     price: 450,
     color: '#38e1ff',
-    icon: '<path d="M12 2v20M2 12h20M5 5l14 14M19 5L5 19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="3" fill="currentColor"/>',
+    icon: '<g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.2v19.6M3.5 7.1l17 9.8M3.5 16.9l17-9.8"/><path d="M9.4 3.8 12 6l2.6-2.2M9.4 20.2 12 18l2.6 2.2M3.2 10.4l3.3-.6-1.1-3.2M20.8 13.6l-3.3.6 1.1 3.2M3.2 13.6l3.3.6-1.1 3.2M20.8 10.4l-3.3-.6 1.1-3.2"/></g><circle cx="12" cy="12" r="2" fill="currentColor"/>',
     beam: { width: 0.07, drillRate: 0, drillRadius: 3.4, heat: 0, color: 0x38e1ff, pitch: 1.6, isCryo: true },
   },
   {
@@ -139,7 +139,7 @@ export const WEAPONS: WeaponDef[] = [
     blurb: 'Small crater, enormous burning shockwave that sweeps cities away.',
     price: 650,
     color: '#9cff57',
-    icon: '<circle cx="12" cy="12" r="3" fill="currentColor"/><path d="M12 3 a9 9 0 0 1 7.8 4.5 L14.6 10.5 a3 3 0 0 0 -2.6 -1.5 Z M4.2 7.5 A9 9 0 0 1 12 3 M3.4 15.5 L8.6 12.5 a3 3 0 0 0 1.4 2.6 L7 20.2 A9 9 0 0 1 3.4 15.5 Z M20.6 15.5 A9 9 0 0 1 17 20.2 L14 15.1 a3 3 0 0 0 1.4 -2.6 Z" fill="currentColor"/>',
+    icon: '<circle cx="12" cy="12" r="10.4" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="1.9" fill="currentColor"/><path d="M10.5 9.4 8 5.07A8 8 0 0 1 16 5.07L13.5 9.4A3 3 0 0 0 10.5 9.4ZM15 12h5A8 8 0 0 1 16 18.93l-2.5-4.33A3 3 0 0 0 15 12ZM9 12H4A8 8 0 0 0 8 18.93l2.5-4.33A3 3 0 0 1 9 12Z" fill="currentColor"/>',
     projectile: {
       speed: 4.5, size: 0.12, model: 'warhead', trailColor: 0xfff080, cluster: 1, spread: 0, cooldown: 0.9,
       impact: { crater: 4, heatRadius: 2.6, heat: 2.0, debris: 40, debrisSpeed: 1.0, fire: 300, flash: 4.5, shockwave: 34, shockKill: true, shockHeat: 0.3, shake: 0.55, boom: 0.75 },
@@ -152,7 +152,7 @@ export const WEAPONS: WeaponDef[] = [
     blurb: 'Hold to rain meteors wherever you point.',
     price: 850,
     color: '#ff8c42',
-    icon: '<circle cx="6" cy="4" r="1.8" fill="currentColor"/><circle cx="12" cy="7" r="2.2" fill="currentColor"/><circle cx="18" cy="5" r="1.5" fill="currentColor"/><circle cx="9" cy="13" r="1.6" fill="currentColor"/><circle cx="16" cy="15" r="1.4" fill="currentColor"/><path d="M6 4l-2 4M12 7l-1 5M18 5l-1 5M9 13l-1 4M16 15l0 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".5"/>',
+    icon: '<path d="M3.6 4.2 8.8 9.4M12 3.4l3.6 3.6M2.8 12.2l4.4 4.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" opacity=".5"/><circle cx="11" cy="11.2" r="2.9" fill="currentColor"/><circle cx="17.6" cy="8.6" r="2.2" fill="currentColor"/><circle cx="9.2" cy="18.2" r="2.3" fill="currentColor"/><circle cx="18.4" cy="18" r="1.6" fill="currentColor" opacity=".75"/>',
     projectile: {
       speed: 5, size: 0.12, model: 'rock', trailColor: 0xff6a20, cluster: 1, spread: 4, cooldown: 0.11,
       impact: { crater: 2.8, heatRadius: 1.6, heat: 1.3, debris: 10, debrisSpeed: 0.9, fire: 50, flash: 1.1, shockwave: 0, shake: 0.08, boom: 0.18 },
@@ -165,7 +165,7 @@ export const WEAPONS: WeaponDef[] = [
     blurb: 'One giant crater. Its debris rains back down and punches more craters.',
     price: 1100,
     color: '#c9a27e',
-    icon: '<path d="M7 6 L13 4 L18 7 L20 13 L16 19 L9 20 L4 15 L4 9 Z" fill="currentColor"/><circle cx="10" cy="10" r="1.6" fill="#000" opacity=".35"/><circle cx="14.5" cy="14" r="2.2" fill="#000" opacity=".3"/>',
+    icon: '<path d="M8 3.4 14 2.6l4.9 3 2.1 5.7-1.6 6.1-5.3 3.5-6.5-.6L3.3 16.2l-.6-6.3z" fill="currentColor"/><circle cx="9.4" cy="9.4" r="2.1" fill="#0b0f1e" opacity=".35"/><circle cx="15" cy="14.6" r="2.9" fill="#0b0f1e" opacity=".3"/><circle cx="15.6" cy="7.4" r="1.2" fill="#0b0f1e" opacity=".3"/><circle cx="7.6" cy="15" r="1" fill="#0b0f1e" opacity=".3"/>',
     projectile: {
       speed: 3.2, size: 0.34, model: 'rock', trailColor: 0xff7a30, cluster: 1, spread: 0, cooldown: 1.2,
       impact: { crater: 11, heatRadius: 1.6, heat: 1.6, debris: 160, debrisSpeed: 1.3, fire: 360, flash: 4.2, shockwave: 24, shake: 0.75, boom: 0.9 },
@@ -179,7 +179,7 @@ export const WEAPONS: WeaponDef[] = [
     blurb: 'One rocket that splits just before impact into a ring of six warheads.',
     price: 1400,
     color: '#ff4dff',
-    icon: '<path d="M12 2 L13 8 L12 9 L11 8 Z" fill="currentColor"/><path d="M12 9 L6 18 M12 9 L9 19 M12 9 L12 20 M12 9 L15 19 M12 9 L18 18" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><circle cx="6" cy="18" r="1.8" fill="currentColor"/><circle cx="9" cy="19" r="1.8" fill="currentColor"/><circle cx="12" cy="20" r="1.8" fill="currentColor"/><circle cx="15" cy="19" r="1.8" fill="currentColor"/><circle cx="18" cy="18" r="1.8" fill="currentColor"/>',
+    icon: '<path d="M12 2 14.2 5.8V9H9.8V5.8z" fill="currentColor"/><path d="M12 11v6.4M11.4 11 6.6 16.6M12.6 11l4.8 5.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-dasharray="1.6 2.2"/><circle cx="12" cy="20" r="2.2" fill="currentColor"/><circle cx="5.4" cy="18.6" r="2.2" fill="currentColor"/><circle cx="18.6" cy="18.6" r="2.2" fill="currentColor"/>',
     projectile: {
       speed: 5, size: 0.11, model: 'warhead', trailColor: 0xff80ff, cluster: 1, spread: 0, cooldown: 1.4,
       impact: { crater: 4.5, heatRadius: 2, heat: 1.5, debris: 40, debrisSpeed: 1.0, fire: 140, flash: 2.2, shockwave: 10, shake: 0.3, boom: 0.45 },
@@ -196,7 +196,7 @@ export const WEAPONS: WeaponDef[] = [
     blurb: 'A tungsten lance that drills straight down and detonates in the core.',
     price: 1800,
     color: '#00e5ff',
-    icon: '<path d="M11 2 L13 2 L13 17 L15 17 L12 22 L9 17 L11 17 Z" fill="currentColor"/><line x1="6" y1="8" x2="6" y2="14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="18" y1="8" x2="18" y2="14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',
+    icon: '<circle cx="12" cy="15.6" r="6.6" fill="none" stroke="currentColor" stroke-width="1.8" opacity=".55"/><circle cx="12" cy="15.6" r="2.3" fill="currentColor"/><path d="M12 1.6V12" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="M8.8 9.6 12 13.2l3.2-3.6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>',
     projectile: {
       speed: 13, size: 0.16, model: 'rod', trailColor: 0x70f0ff, cluster: 1, spread: 0, cooldown: 1.3,
       isKinetic: true,
@@ -211,7 +211,7 @@ export const WEAPONS: WeaponDef[] = [
     blurb: 'Sticks to the surface, drags in rock and debris, grows, then collapses.',
     price: 2400,
     color: '#c056ff',
-    icon: '<circle cx="12" cy="12" r="4.2" fill="currentColor" opacity=".25"/><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.4"/><ellipse cx="12" cy="12" rx="9" ry="3.5" fill="none" stroke="currentColor" stroke-width="2" transform="rotate(-30 12 12)"/><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="2 3"/>',
+    icon: '<circle cx="12" cy="12" r="5" fill="currentColor"/><circle cx="12" cy="12" r="3.3" fill="#0b0f1e"/><ellipse cx="12" cy="12" rx="10.6" ry="3.8" fill="none" stroke="currentColor" stroke-width="2" transform="rotate(-20 12 12)"/>',
     projectile: {
       speed: 4.2, size: 0.28, model: 'singularity', trailColor: 0xcc44ff, cluster: 1, spread: 0, cooldown: 2.0,
       isBlackHole: true,
@@ -225,7 +225,7 @@ export const WEAPONS: WeaponDef[] = [
     blurb: 'Charges while held: starts as a thin ray, ends as a planet-cutting lance.',
     price: 3200,
     color: '#ffd060',
-    icon: '<line x1="4" y1="20" x2="18" y2="4" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/><line x1="4" y1="20" x2="18" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity=".6"/><circle cx="18" cy="4" r="3.5" fill="currentColor" opacity=".3"/><circle cx="18" cy="4" r="2" fill="currentColor" opacity=".5"/><circle cx="4" cy="20" r="2" fill="currentColor" opacity=".4"/>',
+    icon: '<path d="M9.5 12h12.3" stroke="currentColor" stroke-width="3.6" stroke-linecap="round"/><path d="M9.5 12h12.3" stroke="#fff" stroke-width="1.2" stroke-linecap="round" opacity=".7"/><path d="M6.2 5.6 7.6 10.6 12.6 12 7.6 13.4 6.2 18.4 4.8 13.4 0 12 4.8 10.6z" fill="currentColor"/>',
     beam: {
       width: 0.03, drillRate: 20, drillRadius: 1.6, heat: 2.4, color: 0xffa020, pitch: 0.5,
       charge: { time: 3.5, maxRadius: 8.5, maxWidth: 0.24, endColor: 0xfff2c0 },
