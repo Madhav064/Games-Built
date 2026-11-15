@@ -263,8 +263,10 @@ html, body {
   .weapon-btn span { font-size: 10px; }
   .weapon-bar { padding: 6px; gap: 6px; border-radius: 16px; }
   .hint { display: none; }
-  .icon-btn { width: 36px; height: 36px; border-radius: 10px; }
-  .icon-btn svg { width: 19px; height: 19px; }
+  /* Seven tool buttons must stay on one row at 800x450. */
+  .icon-btn { width: 34px; height: 34px; border-radius: 10px; }
+  .icon-btn svg { width: 18px; height: 18px; }
+  .tools { gap: 4px; flex-wrap: nowrap; }
   .rank-chip { padding: 4px 10px 4px 6px; }
   .rank-badge-wrap { width: 24px; height: 24px; }
   .coin-chip { padding: 4px 10px; font-size: 13px; }
@@ -292,6 +294,32 @@ html, body {
   .planet-card { padding: 8px; }
   .planet-ball { width: 46px; height: 46px; }
   .set-row { padding: 6px 2px; }
+}
+
+/* ---------- Goals: missions + achievements ---------- */
+.goals-panel { max-width: 560px; display: flex; flex-direction: column; max-height: min(88vh, 720px); }
+.goals-body { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(140,180,255,.35) transparent; }
+.goals-note { margin: 0 0 4px; color: var(--muted); font-size: 13px; }
+.goal-row { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: var(--radius); background: rgba(255,255,255,.04); border: 1px solid var(--panel-border); }
+.goal-row.done { opacity: .6; }
+.goal-icon { width: 40px; height: 40px; flex: none; border-radius: 12px; display: grid; place-items: center; color: var(--accent-2); background: rgba(255,170,60,.1); }
+.goal-icon svg { width: 24px; height: 24px; }
+.goal-info { flex: 1; min-width: 0; }
+.goal-name { font-weight: 800; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+.goal-desc { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.goal-bar { height: 6px; border-radius: 3px; background: rgba(255,255,255,.08); overflow: hidden; margin-top: 7px; }
+.goal-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+.goal-prog { font-size: 11px; color: var(--muted); margin-top: 3px; font-variant-numeric: tabular-nums; }
+.goal-reward { flex: none; display: inline-flex; align-items: center; gap: 4px; font-weight: 900; color: #ffe08a; font-size: 15px; }
+.goal-reward.done { color: var(--good); }
+.goal-reward.done svg { width: 22px; height: 22px; }
+.goal-pips { display: inline-flex; gap: 3px; }
+.goal-pips i { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,.15); }
+.goal-pips i.on { background: var(--accent-2); box-shadow: 0 0 6px rgba(255,170,60,.6); }
+@media (max-width: 640px) {
+  .goal-row { padding: 10px; gap: 10px; }
+  .goal-icon { width: 34px; height: 34px; }
+  .goal-name { font-size: 14px; }
 }
 
 /* ---------- Weapon reload sweep and info line ---------- */

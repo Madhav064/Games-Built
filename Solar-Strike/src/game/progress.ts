@@ -4,6 +4,7 @@
 import { loadData, saveData } from '../sdk/crazygames';
 import { WEAPONS } from './weapons';
 import { PLANETS } from '../engine/planets';
+import type { Mission } from './missions';
 
 export interface Settings {
   /** 0..1 */
@@ -31,6 +32,17 @@ export interface SaveState {
   tipsDone: number;
   /** The one-time starter coins have been given. */
   starterBonus: boolean;
+  /** The three active missions. */
+  missions: Mission[];
+  /** Achievement id -> tiers already paid out. */
+  achievements: Record<string, number>;
+  /** Lifetime stats for achievements. */
+  shatters: number;
+  satellitesDown: number;
+  /** Ids of every planet destroyed at least once. */
+  destroyedPlanets: string[];
+  /** Quickest planet destruction in seconds (0 = none yet). */
+  fastestDestroy: number;
   settings: Settings;
 }
 
@@ -49,6 +61,12 @@ function defaults(): SaveState {
     freeCoinsAt: 0,
     tipsDone: 0,
     starterBonus: false,
+    missions: [],
+    achievements: {},
+    shatters: 0,
+    satellitesDown: 0,
+    destroyedPlanets: [],
+    fastestDestroy: 0,
     settings: { ...DEFAULT_SETTINGS },
   };
 }
@@ -95,6 +113,9 @@ export class Progress {
         // Players from before the first-minute tips already know the basics.
         if (saved.tipsDone === undefined && (s.shotsFired > 0 || s.planetsDestroyed > 0)) s.tipsDone = 3;
         if (saved.starterBonus === undefined && s.planetsDestroyed > 0) s.starterBonus = true;
+        if (!Array.isArray(s.missions)) s.missions = [];
+        if (!s.achievements || typeof s.achievements !== 'object') s.achievements = {};
+        if (!Array.isArray(s.destroyedPlanets)) s.destroyedPlanets = [];
         // Free items are always owned, even ones added after the save was made.
         for (const w of WEAPONS) if (w.price === 0 && !s.ownedWeapons.includes(w.id)) s.ownedWeapons.push(w.id);
         for (const p of PLANETS) if (p.price === 0 && !s.ownedPlanets.includes(p.id)) s.ownedPlanets.push(p.id);

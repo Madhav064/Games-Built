@@ -28,6 +28,15 @@ export interface HudHandlers {
   onSmashAgain: () => void;
   onChoosePlanet: () => void;
   onBackFromPlanets: () => void;
+  onOpenGoals: () => void;
+  onCloseGoals: () => void;
+}
+
+/** One row in the Missions tab. */
+export interface MissionView { text: string; progress: string | null; frac: number; reward: number }
+/** One row in the Achievements tab. */
+export interface AchievementView {
+  name: string; desc: string; icon: string; tiers: number; claimed: number; frac: number; progress: string; reward: number | null;
 }
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, html?: string): HTMLElementTagNameMap[K] => {
@@ -49,6 +58,7 @@ const ICONS = {
   close: '<path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>',
   lock: '<rect x="5" y="11" width="14" height="10" rx="2" fill="currentColor"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2"/>',
   check: '<path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>',
+  target: '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/>',
 };
 
 const svg = (body: string) => `<svg viewBox="0 0 24 24" aria-hidden="true">${body}</svg>`;
@@ -108,6 +118,12 @@ export class Hud {
   private readonly toastBox: HTMLElement;
   private readonly calloutBox: HTMLElement;
   private readonly busy: HTMLElement;
+  private readonly goals: HTMLElement;
+  private readonly goalsBody: HTMLElement;
+  private readonly goalTabs: HTMLButtonElement[] = [];
+  private goalsTab: 'missions' | 'achievements' = 'missions';
+  private missionViews: MissionView[] = [];
+  private achievementViews: AchievementView[] = [];
   private readonly tapPrompt: HTMLElement;
   private readonly tip: HTMLElement;
   private readonly fadeEl: HTMLElement;
@@ -157,7 +173,9 @@ export class Hud {
     shopBtn.onclick = () => this.h.onOpenShop();
     const setBtn = el('button', 'btn btn-menu', `${svg(ICONS.gear)}<span>Settings</span>`);
     setBtn.onclick = () => this.h.onOpenSettings();
-    row.append(shopBtn, setBtn);
+    const goalsBtn = el('button', 'btn btn-menu', `${svg(ICONS.target)}<span>Missions</span>`);
+    goalsBtn.onclick = () => this.h.onOpenGoals();
+    row.append(goalsBtn, shopBtn, setBtn);
     menuCenter.append(logo, tag, play, row);
     this.menu.append(menuTop, menuCenter);
 
@@ -225,6 +243,30 @@ export class Hud {
     stPanel.append(stHead, stBody, stFoot);
     this.settings.append(stPanel);
 
+    // ---- Missions & achievements ----
+    this.goals = el('div', 'screen overlay-screen hidden');
+    const gPanel = el('div', 'panel goals-panel');
+    const gHead = el('div', 'panel-head', '<h2>Goals</h2>');
+    const gRight = el('div', 'panel-head-right');
+    const gClose = el('button', 'icon-btn', svg(ICONS.close));
+    gClose.setAttribute('aria-label', 'Close goals');
+    gClose.onclick = () => this.h.onCloseGoals();
+    gRight.append(this.makeCoinChip(), gClose);
+    gHead.append(gRight);
+    const gTabs = el('div', 'tabs');
+    for (const [kind, label] of [['missions', 'Missions'], ['achievements', 'Achievements']] as const) {
+      const t = el('button', 'tab', label);
+      t.dataset.kind = kind;
+      t.onclick = () => { this.goalsTab = kind; this.renderGoals(); };
+      this.goalTabs.push(t);
+      gTabs.append(t);
+    }
+    const gBar = el('div', 'shop-bar');
+    gBar.append(gTabs);
+    this.goalsBody = el('div', 'goals-body');
+    gPanel.append(gHead, gBar, this.goalsBody);
+    this.goals.append(gPanel);
+
     // ---- HUD ----
     this.hud = el('div', 'hud hidden');
     const top = el('div', 'hud-top');
@@ -265,7 +307,9 @@ export class Hud {
     btnShop.onclick = () => this.h.onOpenShop();
     const btnSettings = mk(ICONS.gear, 'Settings');
     btnSettings.onclick = () => this.h.onOpenSettings();
-    tools.append(btnPlanets, btnReset, this.btnSlow, this.btnSpin, btnShop, btnSettings);
+    const btnGoals = mk(ICONS.target, 'Missions');
+    btnGoals.onclick = () => this.h.onOpenGoals();
+    tools.append(btnPlanets, btnReset, this.btnSlow, this.btnSpin, btnGoals, btnShop, btnSettings);
     top.append(left, center, tools);
 
     const bottom = el('div', 'hud-bottom');
@@ -288,7 +332,7 @@ export class Hud {
     bottom.prepend(this.tip);
     // Black cover that hides planet loads.
     this.fadeEl = el('div', 'fade-screen');
-    root.append(this.hud, this.tapPrompt, this.menu, this.planetsScreen, this.results, this.shop, this.settings, this.calloutBox, this.toastBox, this.busy, this.fadeEl);
+    root.append(this.hud, this.tapPrompt, this.menu, this.planetsScreen, this.results, this.goals, this.shop, this.settings, this.calloutBox, this.toastBox, this.busy, this.fadeEl);
     this.renderWeapons();
   }
 
@@ -518,6 +562,55 @@ export class Hud {
   get settingsOpen(): boolean { return !this.settings.classList.contains('hidden'); }
 
   get dialogOpen(): boolean { return this.dialogCount > 0; }
+
+  // ---------------- Goals (missions + achievements) ----------------
+  showGoals(): void { this.renderGoals(); this.goals.classList.remove('hidden'); }
+  hideGoals(): void { this.goals.classList.add('hidden'); }
+  get goalsOpen(): boolean { return !this.goals.classList.contains('hidden'); }
+
+  setGoals(missions: MissionView[], achievements: AchievementView[]): void {
+    this.missionViews = missions;
+    this.achievementViews = achievements;
+    if (this.goalsOpen) this.renderGoals();
+  }
+
+  private renderGoals(): void {
+    for (const t of this.goalTabs) t.classList.toggle('active', t.dataset.kind === this.goalsTab);
+    this.goalsBody.innerHTML = '';
+    if (this.goalsTab === 'missions') {
+      this.goalsBody.append(el('p', 'goals-note', 'Complete missions for coins. A new one arrives as soon as you finish one.'));
+      for (const m of this.missionViews) {
+        const row = el('div', 'goal-row');
+        const info = el('div', 'goal-info');
+        info.append(el('div', 'goal-name', m.text));
+        if (m.progress !== null) {
+          const bar = el('div', 'goal-bar');
+          const fill = el('div', 'goal-fill');
+          fill.style.width = `${Math.min(1, m.frac) * 100}%`;
+          bar.append(fill);
+          info.append(bar, el('div', 'goal-prog', m.progress));
+        }
+        row.append(el('div', 'goal-icon', svg(ICONS.target)), info, el('div', 'goal-reward', `${COIN} ${formatCoins(m.reward)}`));
+        this.goalsBody.append(row);
+      }
+    } else {
+      for (const a of this.achievementViews) {
+        const done = a.claimed >= a.tiers;
+        const row = el('div', `goal-row${done ? ' done' : ''}`);
+        const info = el('div', 'goal-info');
+        const pips = Array.from({ length: a.tiers }, (_, i) => `<i class="${i < a.claimed ? 'on' : ''}"></i>`).join('');
+        info.append(el('div', 'goal-name', `${a.name}<span class="goal-pips">${pips}</span>`), el('div', 'goal-desc', a.desc));
+        const bar = el('div', 'goal-bar');
+        const fill = el('div', 'goal-fill');
+        fill.style.width = `${Math.min(1, a.frac) * 100}%`;
+        bar.append(fill);
+        info.append(bar, el('div', 'goal-prog', a.progress));
+        const reward = a.reward === null ? el('div', 'goal-reward done', `${svg(ICONS.check)}`) : el('div', 'goal-reward', `${COIN} ${formatCoins(a.reward)}`);
+        row.append(el('div', 'goal-icon', svg(a.icon)), info, reward);
+        this.goalsBody.append(row);
+      }
+    }
+  }
 
   /** `extras`: additional reward lines, e.g. the one-time starter bonus. */
   showResults(planet: PlanetDef, killed: number, coins: number, canDouble: boolean, shotsFired: number, extras: { value: string; label: string }[] = []): void {

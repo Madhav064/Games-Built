@@ -5,6 +5,8 @@ import { Progress, type Rank, type Settings } from './game/progress';
 import { PLANETS, type PlanetDef } from './engine/planets';
 import { prewarm } from './engine/planetCache';
 import { WEAPONS, type WeaponDef } from './game/weapons';
+import { applyMissionEvent, describeMission, ensureMissions, missionProgressText, type MissionContext, type MissionEvent } from './game/missions';
+import { ACHIEVEMENTS, checkAchievements, claimedTiers } from './game/achievements';
 import * as sdk from './sdk/crazygames';
 import * as sfx from './audio/sfx';
 
@@ -55,6 +57,67 @@ async function boot(): Promise<void> {
     hud.setRank(progress.rank, progress.rankProgress);
   };
 
+  // ---------------------------------------------------------------------------
+  // Missions and achievements
+  // ---------------------------------------------------------------------------
+  const missionCtx = (): MissionContext => ({
+    ownedWeapons: progress.state.ownedWeapons, ownedPlanets: progress.state.ownedPlanets, currentPlanet: game.planetDef.id,
+  });
+
+  /** Push the current missions and achievements to the Goals screen. */
+  const refreshGoals = () => {
+    const s = progress.state;
+    ensureMissions(s.missions, missionCtx()); // never show an empty list, whatever reset the save
+    const missions = s.missions.map(m => {
+      const text = missionProgressText(m);
+      return { text: describeMission(m), progress: text, frac: text === null ? 0 : m.progress / m.target, reward: m.reward };
+    });
+    const achievements = ACHIEVEMENTS.map(def => {
+      const claimed = claimedTiers(s, def.id);
+      const done = claimed >= def.tiers.length;
+      const next = def.tiers[Math.min(claimed, def.tiers.length - 1)];
+      const value = def.value(s);
+      const frac = done ? 1 : Math.min(1, value / next.target);
+      const progressText = done ? 'Complete' : next.target <= 10000 ? `${fmt(Math.min(value, next.target))} / ${fmt(next.target)}` : `${Math.floor(frac * 100)}%`;
+      return { name: def.name, desc: def.desc(next.target), icon: def.icon, tiers: def.tiers.length, claimed, frac, progress: progressText, reward: done ? null : next.reward };
+    });
+    hud.setGoals(missions, achievements);
+  };
+
+  /** Pay out newly reached achievement tiers. */
+  const checkAch = () => {
+    const got = checkAchievements(progress.state);
+    if (!got.length) return;
+    for (const { def, tier } of got) {
+      const reward = def.tiers[tier].reward;
+      progress.addCoins(reward);
+      hud.toast(`Achievement: ${def.name} · ${COIN} +${fmt(reward)}`, 'level', 3400);
+    }
+    sfx.levelUp();
+    sdk.happyTime(); // a real achievement (QA: happytime only for those, sparingly)
+    syncWallet();
+    progress.queueSave();
+    refreshGoals();
+  };
+
+  /** Feed an event to the missions; completed ones pay out and are replaced. */
+  const missionEvent = (e: MissionEvent) => {
+    if (!inGame) return;
+    ensureMissions(progress.state.missions, missionCtx());
+    const done = applyMissionEvent(progress.state.missions, e, missionCtx());
+    for (const m of done) {
+      progress.addCoins(m.reward);
+      hud.toast(`Mission complete: ${describeMission(m)} · ${COIN} +${fmt(m.reward)}`, 'level', 3400);
+    }
+    if (done.length) { sfx.purchase(); syncWallet(); }
+    progress.queueSave();
+    refreshGoals();
+  };
+
+  /** Per-planet tracking for missions: weapons used and people lost so far. */
+  const weaponsUsed = new Set<string>();
+  let killedOnPlanet = 0;
+
   const applySettings = (s: Settings) => {
     sfx.setVolume(s.masterVolume, s.sfxVolume);
     // The platform's mute always wins over the in-game setting.
@@ -71,7 +134,7 @@ async function boot(): Promise<void> {
    * resume gameplay for a moment before the ad request. Play resumes once the ad is done.
    */
   let adFlowHold = 0;
-  const menuOverGame = () => hud.shopOpen || hud.settingsOpen || hud.planetsOpen || hud.dialogOpen || adFlowHold > 0;
+  const menuOverGame = () => hud.shopOpen || hud.settingsOpen || hud.planetsOpen || hud.goalsOpen || hud.dialogOpen || adFlowHold > 0;
   const refreshPause = () => game.setPaused(adPlaying || (inGame && menuOverGame()));
   /** Call after closing anything: resumes gameplay if nothing else is covering it. */
   const resumeIfPlaying = () => {
@@ -176,6 +239,7 @@ async function boot(): Promise<void> {
     await loadBehindFade(() => {
       hud.hideSettings();
       hud.hideShop();
+      hud.hideGoals();
       hud.hidePlanets();
       hud.hideResults();
       if (hud.clearTrials()) game.selectWeapon(WEAPONS[0].id);
@@ -208,6 +272,10 @@ async function boot(): Promise<void> {
     sfx.purchase();
     hud.toast(`Unlocked ${name}!`, 'level', 2600);
     syncWallet();
+    // New gear can open up new missions (e.g. Cryo -> shatter goals) and the arsenal achievement.
+    ensureMissions(progress.state.missions, missionCtx());
+    checkAch();
+    refreshGoals();
   };
 
   const buyWeapon = (w: WeaponDef): boolean => {
@@ -239,6 +307,8 @@ async function boot(): Promise<void> {
       void enterPlanet(id);
     },
     onOpenShop: () => openOverlay(() => { hud.showShop(); refreshFreeCoins(); }),
+    onOpenGoals: () => openOverlay(() => { refreshGoals(); hud.showGoals(); }),
+    onCloseGoals: () => closeOverlay(() => hud.hideGoals()),
     onCloseShop: () => closeOverlay(() => hud.hideShop()),
     onOpenSettings: () => openOverlay(() => hud.showSettings(progress.state.settings, inGame)),
     onCloseSettings: () => closeOverlay(() => hud.hideSettings()),
@@ -319,6 +389,8 @@ async function boot(): Promise<void> {
       game.selectWeapon(WEAPONS[0].id);
       hud.selectWeapon(WEAPONS[0].id);
       syncWallet();
+      ensureMissions(progress.state.missions, missionCtx());
+      refreshGoals();
       await goToMenu(progress.ownsPlanet(game.planetDef.id) ? undefined : PLANETS[0]);
       // Fresh start: back to the new-player Missile.
       game.selectWeapon('missile');
@@ -362,8 +434,38 @@ async function boot(): Promise<void> {
     hud.toast(`Rank up! ${rank.name}`, 'level', 3500);
   };
 
-  game.events.onStats = s => hud.setStats(s.population, s.total, s.health);
-  game.events.onPlanetLoaded = p => hud.setPlanet(p);
+  game.events.onStats = s => {
+    hud.setStats(s.population, s.total, s.health);
+    // People lost since the last update count toward missions and the extinction achievement.
+    const killed = s.total - s.population;
+    const delta = killed - killedOnPlanet;
+    if (inGame && delta > 0) {
+      killedOnPlanet = killed;
+      progress.state.peopleKilled += delta;
+      missionEvent({ type: 'killed', people: delta });
+      checkAch();
+    }
+  };
+  game.events.onPlanetLoaded = p => {
+    hud.setPlanet(p);
+    weaponsUsed.clear();
+    killedOnPlanet = 0;
+  };
+  game.events.onShatter = () => {
+    if (!inGame) return;
+    progress.state.shatters++;
+    missionEvent({ type: 'shatter' });
+    checkAch();
+  };
+  game.events.onPlanetBroken = ({ planet, seconds }) => {
+    if (!inGame) return;
+    const s = progress.state;
+    s.planetsDestroyed++;
+    if (!s.destroyedPlanets.includes(planet.id)) s.destroyedPlanets.push(planet.id);
+    if (s.fastestDestroy <= 0 || seconds < s.fastestDestroy) s.fastestDestroy = seconds;
+    missionEvent({ type: 'destroyed', planet: planet.id, seconds, weapons: [...weaponsUsed] });
+    checkAch();
+  };
   game.events.onCallout = text => hud.callout(text);
   game.events.onXp = amount => {
     if (!inGame) return;
@@ -377,12 +479,14 @@ async function boot(): Promise<void> {
     progress.state.shotsFired++;
     progress.queueSave();
     completeTip(1);
+    if (!inGame) return;
+    weaponsUsed.add(game.weapon.id);
+    missionEvent({ type: 'shot' });
+    checkAch();
   };
   game.events.onPlanetDestroyed = ({ planet, killed, xp, shots }) => {
     if (resultsShown || !inGame) return;
     resultsShown = true;
-    progress.state.planetsDestroyed++;
-    progress.state.peopleKilled += killed;
     progress.queueSave();
     lastDestroyXp = xp;
     lastDestroyKilled = killed;
@@ -433,6 +537,10 @@ async function boot(): Promise<void> {
   game.rig.dist = 9; game.rig.zoom(1.25);
   // New players start on the Missile: one tap, instant boom.
   if (progress.state.tipsDone === 0) { game.selectWeapon('missile'); hud.selectWeapon('missile'); }
+  // Missions are always topped up to three; tiers already earned by older saves pay out now.
+  ensureMissions(progress.state.missions, missionCtx());
+  checkAch();
+  refreshGoals();
   game.start();
   sdk.loadingStop();
   // Build the other owned planets in a background worker so switching to them is quick.

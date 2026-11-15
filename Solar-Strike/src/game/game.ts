@@ -70,13 +70,18 @@ interface ActiveSingularity {
 export interface GameEvents {
   onStats?: (s: { population: number; total: number; health: number }) => void;
   onXp?: (amount: number) => void;
+  /** Results time, ~2.6 s after the break-up starts (skipped if the player moves on first). */
   onPlanetDestroyed?: (s: { planet: PlanetDef; killed: number; xp: number; shots: number }) => void;
+  /** The moment a planet breaks apart: `seconds` of play it took. */
+  onPlanetBroken?: (s: { planet: PlanetDef; seconds: number }) => void;
   onPlanetLoaded?: (p: PlanetDef) => void;
   onShotFired?: () => void;
   /** Fire has been held down for a moment with this weapon (once per press). */
   onFireHeld?: (weaponId: string) => void;
   /** Reload progress of slow weapons: 1 = just fired, 0 = ready. */
   onCooldown?: (fraction: number) => void;
+  /** Frozen ground shattered (at most about once a second). */
+  onShatter?: () => void;
   /** Big centre-screen callout, e.g. "SHATTER!". */
   onCallout?: (text: string) => void;
 }
@@ -144,6 +149,8 @@ export class Game {
   private stability = 1;
   /** Stability drain multiplier (2 on a brand-new player's first planet). */
   private stabilityScale = 1;
+  /** Real seconds of unpaused play on the current planet (for timed missions). */
+  planetTime = 0;
   private lastKilledShare = 0;
   private statsTimer = 0;
 
@@ -237,6 +244,7 @@ export class Game {
     planet.group.add(this.population.points);
     this.lastIntegrity = 1;
     this.stability = 1;
+    this.planetTime = 0;
     this.lastKilledShare = 0;
     this.xpEarned = 0;
     this.shotsThisPlanet = 0;
@@ -948,6 +956,7 @@ export class Game {
     if (now - this.shatterCalloutAt > 900) {
       this.shatterCalloutAt = now;
       this.events.onCallout?.('SHATTER!');
+      this.events.onShatter?.();
     }
   }
 
@@ -1196,6 +1205,7 @@ export class Game {
     const bonus = 150;
     this.awardXp(bonus);
     const killed = this.population?.total ?? killedBefore;
+    this.events.onPlanetBroken?.({ planet: this.planetDef, seconds: this.planetTime });
     // Skip the results if the player rebuilt or switched planets during the break-up.
     const gen = this.planetGen;
     setTimeout(() => {
@@ -1266,6 +1276,7 @@ export class Game {
       }
 
       if (planet && !this.destroyed) {
+        if (this.inputEnabled) this.planetTime += rawDt;
         planet.update(dt);
         this.population?.update(dt);
         // XP: mass destroyed and population lost.
