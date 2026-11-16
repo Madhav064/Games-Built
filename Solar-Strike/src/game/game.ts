@@ -923,6 +923,7 @@ export class Game {
     const frozen = this.planetDef.kind === 'ice' || planet.coldAt(g.x, g.y, g.z, Math.max(2, s.crater * 0.6)) < -0.4;
     const crater = frozen ? s.crater * 1.7 : s.crater;
     const res = planet.carve(g.x, g.y, g.z, crater);
+    this.charges?.trigger(g, crater + 2.5);
     this.damageStability(frozen ? s.stability * 1.7 : s.stability);
     planet.addHeat(g.x, g.y, g.z, crater * s.heatRadius, s.heat);
     this.population?.blast(g.x, g.y, g.z, crater * 1.2);
