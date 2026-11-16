@@ -880,6 +880,7 @@ export class Game {
         s.tickTimer = 0.12;
         s.carveRadius = Math.min(13, s.carveRadius + 0.3);
         planet.carve(s.gridPos.x, s.gridPos.y, s.gridPos.z, s.carveRadius, 0.4);
+        this.charges?.trigger(s.gridPos, s.carveRadius + 1.5);
         planet.addHeat(s.gridPos.x, s.gridPos.y, s.gridPos.z, s.carveRadius * 1.3, 0.3);
         this.population?.blast(s.gridPos.x, s.gridPos.y, s.gridPos.z, s.carveRadius * 1.4);
         this.damageStability(0.004);
@@ -904,6 +905,7 @@ export class Game {
         this.rings.spawn(this.scene, s.pos, norm, 24, 0xc050ff, 2.2);
         if (planet && !this.destroyed) {
           planet.carve(s.gridPos.x, s.gridPos.y, s.gridPos.z, 15, 0.4);
+          this.charges?.trigger(s.gridPos, 17);
           planet.addHeat(s.gridPos.x, s.gridPos.y, s.gridPos.z, 22, 1.8);
           this.damageStability(0.12);
         }
@@ -1231,6 +1233,7 @@ export class Game {
         const c = hitG.clone().addScaledVector(dirG, adv - r * 0.7);
         planet.carve(c.x, c.y, c.z, r, 0.15);
       }
+      this.charges?.trigger(hitG, r + 1.5);
       if (spec.isCryo) {
         planet.freeze(hitG.x, hitG.y, hitG.z, r * 2.8, 3.2 * STEP * 6);
       } else {
