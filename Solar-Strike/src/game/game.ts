@@ -621,11 +621,11 @@ export class Game {
     const g = new THREE.Group();
     const body = new THREE.Mesh(
       new THREE.CylinderGeometry(size * 0.18, size * 0.18, size, 8),
-      new THREE.MeshStandardMaterial({ color: model === 'warhead' ? 0x3a3d44 : 0xe8e8ec, metalness: 0.5, roughness: 0.4 }),
+      new THREE.MeshStandardMaterial({ color: model === 'missile' ? 0xe8e8ec : 0x3a3d44, metalness: 0.5, roughness: 0.4 }),
     );
     const nose = new THREE.Mesh(
       new THREE.ConeGeometry(size * 0.18, size * 0.35, 8),
-      new THREE.MeshStandardMaterial({ color: model === 'warhead' ? 0xd8c020 : 0xd23b3b, metalness: 0.3, roughness: 0.5 }),
+      new THREE.MeshStandardMaterial({ color: model === 'warhead' ? 0xd8c020 : model === 'charge' ? 0xff2a4a : 0xd23b3b, metalness: 0.3, roughness: 0.5 }),
     );
     nose.position.y = size * 0.67;
     const glow = new THREE.Mesh(
