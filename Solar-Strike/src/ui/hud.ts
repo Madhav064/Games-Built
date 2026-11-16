@@ -30,6 +30,7 @@ export interface HudHandlers {
   onBackFromPlanets: () => void;
   onOpenGoals: () => void;
   onCloseGoals: () => void;
+  onDetonate: () => void;
 }
 
 /** One row in the Missions tab. */
@@ -141,6 +142,7 @@ export class Hud {
   private readonly weaponInfo: HTMLElement;
   private readonly hint: HTMLElement;
   private readonly btnSlow: HTMLButtonElement;
+  private readonly detonateBtn: HTMLButtonElement;
   private readonly btnSpin: HTMLButtonElement;
   private readonly planetGrid: HTMLElement;
   private readonly shopGrid: HTMLElement;
@@ -316,7 +318,11 @@ export class Hud {
     this.weaponInfo = el('div', 'weapon-info');
     this.weaponBar = el('div', 'weapon-bar');
     this.hint = el('div', 'hint', 'Click / tap to fire &middot; right-drag or two fingers to rotate &middot; scroll / pinch to zoom');
-    bottom.append(this.weaponInfo, this.weaponBar, this.hint);
+    // Sleeper Charges: appears while charges are planted, whatever weapon is selected.
+    this.detonateBtn = el('button', 'btn btn-detonate hidden');
+    this.detonateBtn.onclick = e => { e.stopPropagation(); this.h.onDetonate(); };
+    this.detonateBtn.addEventListener('pointerdown', e => e.stopPropagation());
+    bottom.append(this.detonateBtn, this.weaponInfo, this.weaponBar, this.hint);
     this.hud.append(top, bottom);
 
     // ---- Results ----
@@ -757,6 +763,12 @@ export class Hud {
   }
 
   // ---------------- Feedback ----------------
+  /** Show the Detonate button with the number of planted Sleeper Charges (hidden at 0). */
+  setCharges(n: number): void {
+    this.detonateBtn.classList.toggle('hidden', n <= 0);
+    this.detonateBtn.innerHTML = `<span class="det-dot"></span> DETONATE <b>${n}</b>`;
+  }
+
   toast(html: string, kind: 'info' | 'xp' | 'level' = 'info', ms = 2200): void {
     const t = el('div', `toast toast-${kind}`, html);
     this.toastBox.append(t);
