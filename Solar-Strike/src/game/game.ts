@@ -1428,6 +1428,10 @@ export class Game {
       this.updateSingularities(dt);
       this.updateLava(dt);
       this.updateLances(dt);
+      if (planet && !this.destroyed) {
+        const sleeper = weaponById('sleeper').projectile!;
+        this.charges?.update(dt, g => this.impact(g, sleeper.impact, sleeper));
+      }
       this.orbiters?.update(dt);
       this.updatePersonality(dt);
       this.impactLight.intensity *= Math.exp(-dt * 8);
