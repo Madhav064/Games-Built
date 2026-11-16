@@ -17,6 +17,7 @@ import { CameraRig } from './cameraRig';
 import { WEAPONS, weaponById, type ImpactSpec, type ProjectileSpec, type WeaponDef } from './weapons';
 import * as sfx from '../audio/sfx';
 import { Orbiters, type Orbiter, type OrbiterKind } from './orbiters';
+import { SleeperCharges } from './charges';
 
 interface Projectile {
   spec: ProjectileSpec;
@@ -89,6 +90,8 @@ export interface GameEvents {
   onOrbiterDown?: (kind: OrbiterKind) => void;
   /** Big centre-screen callout, e.g. "SHATTER!". */
   onCallout?: (text: string) => void;
+  /** Number of Sleeper Charges waiting in the ground changed. */
+  onChargesChanged?: (count: number) => void;
 }
 
 const SUN_DIR = new THREE.Vector3(1, 0.3, -0.3).normalize();
@@ -126,6 +129,7 @@ export class Game {
   private atmoStrength = 1;
   private population: Population | null = null;
   private orbiters: Orbiters | null = null;
+  private charges: SleeperCharges | null = null;
   private shatter: Shatter | null = null;
   destroyed = false;
 
@@ -258,6 +262,8 @@ export class Game {
     planet.group.add(this.population.points);
     this.orbiters = new Orbiters(def);
     this.scene.add(this.orbiters.group);
+    this.charges = new SleeperCharges(planet.group);
+    this.charges.onCountChanged = n => this.events.onChargesChanged?.(n);
     this.lastIntegrity = 1;
     this.stability = 1;
     this.planetTime = 0;
@@ -292,6 +298,8 @@ export class Game {
     this.population = null;
     this.orbiters?.dispose();
     this.orbiters = null;
+    this.charges?.dispose();
+    this.charges = null;
     this.clouds?.dispose();
     this.clouds = null;
     if (this.planetRings) {
@@ -721,12 +729,30 @@ export class Game {
         // Close to the target: detonate exactly on it (sub-steps can stop a few voxels short).
         const g = remaining < 0.25 ? p.target.clone() : planet.worldToGrid(p.pos, new THREE.Vector3());
         if (spec.isBlackHole) this.spawnSingularity(p.pos.clone(), g);
+        else if (spec.sleeper && this.charges?.plant(g)) this.chargePlanted(p.pos);
         else this.impact(g, p.impact, spec);
         this.removeProjectile(i);
       } else if (p.age > 12) {
         this.removeProjectile(i);
       }
     }
+  }
+
+  /** A Sleeper Charge stuck in the ground: a puff of dust and a click. */
+  private chargePlanted(at: THREE.Vector3): void {
+    this.flashes.spawn(at, 0.25, 0xff6080, 0.15);
+    const n = at.clone().normalize();
+    for (let k = 0; k < 8; k++) {
+      const v = this.randomHemisphere(n, 0.7).multiplyScalar(0.2 + Math.random() * 0.3);
+      this.particles.spawn({ x: at.x, y: at.y, z: at.z, vx: v.x, vy: v.y, vz: v.z, r: 0.7, g: 0.6, b: 0.5, size: 0.03 + Math.random() * 0.03, life: 0.4, drag: 2 });
+    }
+    sfx.click();
+  }
+
+  /** Detonate button: set off every planted Sleeper Charge in a chain. */
+  detonateCharges(): void {
+    if (this.paused || this.destroyed) return;
+    this.charges?.detonateAll();
   }
 
   /** Damage an orbiting target; a kill throws metal (or rock) debris and reports it. */
