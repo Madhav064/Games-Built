@@ -1107,6 +1107,7 @@ export class Game {
         L.tick = 0.12;
         planet.addHeat(L.g.x, L.g.y, L.g.z, r, 0.45);
         planet.carve(L.g.x, L.g.y, L.g.z, r * 0.42, 0.6);
+        this.charges?.trigger(L.g, r * 0.6 + 1);
         this.population?.blast(L.g.x, L.g.y, L.g.z, r * 0.9);
         this.damageStability(0.0008);
       }
@@ -1137,6 +1138,7 @@ export class Game {
         L.carved += 1.2;
         const p = L.g.clone().addScaledVector(L.dir, L.carved);
         planet.carve(p.x, p.y, p.z, L.radius, 0.25);
+        this.charges?.trigger(p, L.radius + 1.5);
         planet.addHeat(p.x, p.y, p.z, L.radius * 2.2, 1.4);
       }
       const mouth = planet.gridToWorld(L.g, this.tmpA);
@@ -1148,6 +1150,7 @@ export class Game {
       if (L.progress >= L.depth) {
         const end = L.g.clone().addScaledVector(L.dir, L.depth);
         planet.carve(end.x, end.y, end.z, L.cavity, 0.5);
+        this.charges?.trigger(end, L.cavity + 2);
         planet.addHeat(end.x, end.y, end.z, L.cavity * 1.8, 2.2);
         this.damageStability(0.06);
         // The blast escapes up the shaft.
@@ -1450,6 +1453,7 @@ export class Game {
           const k = Math.min(1, s.t / s.dur);
           const r = s.maxR * (1 - Math.pow(1 - k, 2));
           planet.heatRing(s.cx, s.cy, s.cz, r, 2.0, s.heat * (1 - k * 0.8));
+          this.charges?.triggerRing(this.tmpC.set(s.cx, s.cy, s.cz), r, 2.5);
           if (s.kill && !this.destroyed) this.population?.blast(s.cx, s.cy, s.cz, r);
         }
         if (s.t >= s.dur) this.shockwaves.splice(i, 1);
