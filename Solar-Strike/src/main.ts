@@ -310,6 +310,7 @@ async function boot(): Promise<void> {
     onOpenShop: () => openOverlay(() => { hud.showShop(); refreshFreeCoins(); }),
     onOpenGoals: () => openOverlay(() => { refreshGoals(); hud.showGoals(); }),
     onCloseGoals: () => closeOverlay(() => hud.hideGoals()),
+    onDetonate: () => game.detonateCharges(),
     onCloseShop: () => closeOverlay(() => hud.hideShop()),
     onOpenSettings: () => openOverlay(() => hud.showSettings(progress.state.settings, inGame)),
     onCloseSettings: () => closeOverlay(() => hud.hideSettings()),
@@ -481,6 +482,7 @@ async function boot(): Promise<void> {
     checkAch();
   };
   game.events.onCallout = text => hud.callout(text);
+  game.events.onChargesChanged = n => hud.setCharges(n);
   game.events.onXp = amount => {
     if (!inGame) return;
     const rank = progress.addXp(amount);
