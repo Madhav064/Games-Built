@@ -759,12 +759,19 @@ export class Game {
       // Sub-step so fast projectiles don't tunnel through the surface.
       let hit = false;
       let hitOrbiter: Orbiter | null = null;
+      let absorbed = false;
+      let hitSat: ReturnType<Defences['nearSatellite']> = null;
       const armed = p.age >= p.armAt;
       const steps = Math.max(1, Math.ceil(step / (VOXEL * 1.5)));
+      const shieldUp = this.defences?.shieldUp ?? false;
       for (let s = 0; s < steps; s++) {
+        const prevR = p.pos.length();
         p.pos.addScaledVector(p.vel, dt / steps);
+        // Crossing a planetary shield from outside: it soaks up the shot.
+        if (shieldUp && prevR >= SHIELD_R && p.pos.length() < SHIELD_R) { absorbed = true; break; }
         // Anything passing close to a satellite or moon clips it.
         if (armed && this.orbiters && (hitOrbiter = this.orbiters.near(p.pos, 0.03))) break;
+        if (armed && this.defences && (hitSat = this.defences.nearSatellite(p.pos, 0.02))) break;
         if (armed && planet.isSolidWorld(p.pos, this.tmpC)) { hit = true; break; }
       }
       if (p.orbiter) {
@@ -801,6 +808,20 @@ export class Game {
             life: spec.model === 'rock' ? 0.7 : 0.45, drag: 2, grow: 2.2,
           });
         }
+      }
+      if (absorbed) {
+        // Big shots hit the shield harder; a black hole or asteroid breaks it outright.
+        this.defences!.shieldHit(p.pos, Math.max(8, p.impact.stability * 1200));
+        this.flashes.spawn(p.pos, 0.6 + p.impact.boom, 0x9ff0ff, 0.25);
+        sfx.explosion(0.05 + p.impact.boom * 0.3);
+        this.removeProjectile(i);
+        continue;
+      }
+      if (hitSat) {
+        this.defences!.hitSatellite(hitSat, spec.isBlackHole || spec.impact.stability >= 0.02 ? 9 : 1);
+        this.flashes.spawn(p.pos, 0.4, 0xffd6a0, 0.2);
+        this.removeProjectile(i);
+        continue;
       }
       if (hitOrbiter) {
         this.orbiterHit(hitOrbiter, spec.isBlackHole || spec.impact.stability >= 0.05 ? 99 : 1, p.pos);
