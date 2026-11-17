@@ -48,6 +48,8 @@ export interface PlanetDef {
   orbiters?: { satellites?: number; stations?: number; moons?: number };
   /** Use the real Earth map (coastlines + colours) instead of noise terrain. */
   realMap?: 'earth' | 'earth2099';
+  /** Civilian ships cruising low over the surface. */
+  civilianShips?: number;
 }
 
 /** gas: billows glowing gas and bursts into a cloud. star: throws solar flares. ice: always frozen, so every hit shatters. */
@@ -97,6 +99,7 @@ export const PLANETS: PlanetDef[] = [
     atmosphere: { color: 0xff9a6a, strength: 0.45 },
     price: 0,
     orbiters: { moons: 2, satellites: 1 },
+    civilianShips: 6,
   },
   {
     id: 'moon',
@@ -207,6 +210,7 @@ export const PLANETS: PlanetDef[] = [
     atmosphere: { color: 0xf0a840, strength: 1.1 },
     price: 600,
     orbiters: { satellites: 1 },
+    civilianShips: 4,
   },
   {
     id: 'mercury',
