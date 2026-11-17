@@ -1454,6 +1454,7 @@ export class Game {
     const killedBefore = this.population?.killed ?? 0;
     this.population?.killAll();
     this.ships?.flee();
+    this.defences?.collapse();
 
     this.shatter = new Shatter(planet, planet.material);
     this.scene.add(this.shatter.group);
