@@ -700,6 +700,8 @@ export class Game {
       if (p.orbiter) {
         if (!hitOrbiter && remaining < p.orbiter.radius + step) hitOrbiter = p.orbiter;
       } else if (armed && remaining < step) hit = true;
+      // Shots plough straight through civilian ships.
+      if (this.ships && armed) for (const at of this.ships.blast(p.pos, 0.07)) this.shipDown(at);
       p.mesh.position.copy(p.pos);
       if (spec.model === 'rock' || spec.model === 'blob') {
         p.mesh.rotation.x += dt * 1.3; p.mesh.rotation.y += dt * 0.7;
@@ -757,6 +759,17 @@ export class Game {
       this.particles.spawn({ x: at.x, y: at.y, z: at.z, vx: v.x, vy: v.y, vz: v.z, r: 0.7, g: 0.6, b: 0.5, size: 0.03 + Math.random() * 0.03, life: 0.4, drag: 2 });
     }
     sfx.click();
+  }
+
+  /** A civilian ship blew up at `at`: a small fireball and some sparks. */
+  private shipDown(at: THREE.Vector3): void {
+    this.flashes.spawn(at, 0.5, 0xffc080, 0.3);
+    for (let k = 0; k < 16; k++) {
+      const v = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(0.3 + Math.random() * 0.7);
+      this.particles.spawn({ x: at.x, y: at.y, z: at.z, vx: v.x, vy: v.y, vz: v.z, r: 1, g: 0.55 + Math.random() * 0.35, b: 0.25, size: 0.03 + Math.random() * 0.04, life: 0.3 + Math.random() * 0.4, drag: 1.6 });
+    }
+    sfx.explosion(0.08);
+    this.events.onShipDown?.();
   }
 
   /** Detonate button: set off every planted Sleeper Charge in a chain. */
@@ -891,6 +904,7 @@ export class Game {
         s.carveRadius = Math.min(13, s.carveRadius + 0.3);
         planet.carve(s.gridPos.x, s.gridPos.y, s.gridPos.z, s.carveRadius, 0.4);
         this.charges?.trigger(s.gridPos, s.carveRadius + 1.5);
+        if (this.ships) for (const at of this.ships.blast(s.pos, 0.45)) this.shipDown(at);
         planet.addHeat(s.gridPos.x, s.gridPos.y, s.gridPos.z, s.carveRadius * 1.3, 0.3);
         this.population?.blast(s.gridPos.x, s.gridPos.y, s.gridPos.z, s.carveRadius * 1.4);
         this.damageStability(0.004);
@@ -942,6 +956,7 @@ export class Game {
 
     const world = planet.gridToWorld(g, new THREE.Vector3());
     const normal = world.clone().normalize();
+    if (this.ships) for (const at of this.ships.blast(world, crater * VOXEL * 1.5 + 0.12)) this.shipDown(at);
     const local = g.clone().subScalar(CENTER).multiplyScalar(VOXEL);
     const localNormal = local.clone().normalize();
 
@@ -1223,6 +1238,10 @@ export class Game {
     if (oh && (!hitG || oh.dist < planet.gridToWorld(hitG, this.tmpC).distanceTo(ray.origin))) {
       if (this.orbiters!.hit(oh.orbiter, dt * 6)) this.orbiterFx(oh.orbiter, true, oh.orbiter.pos);
       else if (Math.random() < 0.3) this.particles.spawn({ x: oh.orbiter.pos.x, y: oh.orbiter.pos.y, z: oh.orbiter.pos.z, vx: (Math.random() - 0.5) * 0.6, vy: (Math.random() - 0.5) * 0.6, vz: (Math.random() - 0.5) * 0.6, r: 1, g: 0.7, b: 0.4, size: 0.05, life: 0.25 });
+    }
+    if (this.ships) {
+      const reach = hitG ? planet.gridToWorld(hitG, this.tmpC).distanceTo(ray.origin) : 30;
+      for (const at of this.ships.rayBlast(ray.origin, ray.direction, reach, 0.06)) this.shipDown(at);
     }
     if (!hitG) {
       this.beam.show(from, ray.origin.clone().addScaledVector(ray.direction, 30), width, dt);
