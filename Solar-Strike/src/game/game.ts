@@ -18,6 +18,7 @@ import { WEAPONS, weaponById, type ImpactSpec, type ProjectileSpec, type WeaponD
 import * as sfx from '../audio/sfx';
 import { Orbiters, type Orbiter, type OrbiterKind } from './orbiters';
 import { SleeperCharges } from './charges';
+import { CivilianShips } from './civilians';
 
 interface Projectile {
   spec: ProjectileSpec;
@@ -92,6 +93,8 @@ export interface GameEvents {
   onCallout?: (text: string) => void;
   /** Number of Sleeper Charges waiting in the ground changed. */
   onChargesChanged?: (count: number) => void;
+  /** A civilian ship was destroyed. */
+  onShipDown?: () => void;
 }
 
 const SUN_DIR = new THREE.Vector3(1, 0.3, -0.3).normalize();
@@ -130,6 +133,7 @@ export class Game {
   private population: Population | null = null;
   private orbiters: Orbiters | null = null;
   private charges: SleeperCharges | null = null;
+  private ships: CivilianShips | null = null;
   private shatter: Shatter | null = null;
   destroyed = false;
 
@@ -264,6 +268,10 @@ export class Game {
     this.scene.add(this.orbiters.group);
     this.charges = new SleeperCharges(planet.group);
     this.charges.onCountChanged = n => this.events.onChargesChanged?.(n);
+    if (def.civilianShips) {
+      this.ships = new CivilianShips(def.civilianShips);
+      this.scene.add(this.ships.group);
+    }
     this.lastIntegrity = 1;
     this.stability = 1;
     this.planetTime = 0;
@@ -300,6 +308,8 @@ export class Game {
     this.orbiters = null;
     this.charges?.dispose();
     this.charges = null;
+    this.ships?.dispose();
+    this.ships = null;
     this.clouds?.dispose();
     this.clouds = null;
     if (this.planetRings) {
@@ -1313,6 +1323,7 @@ export class Game {
     this.stopFiring();
     const killedBefore = this.population?.killed ?? 0;
     this.population?.killAll();
+    this.ships?.flee();
 
     this.shatter = new Shatter(planet, planet.material);
     this.scene.add(this.shatter.group);
@@ -1438,6 +1449,11 @@ export class Game {
       if (planet && !this.destroyed) {
         const sleeper = weaponById('sleeper').projectile!;
         this.charges?.update(dt, g => this.impact(g, sleeper.impact, sleeper));
+      }
+      if (this.ships) {
+        const dangers = this.projectiles.map(p => p.pos);
+        for (const s of this.singularities) dangers.push(s.pos);
+        this.ships.update(dt, dangers);
       }
       this.orbiters?.update(dt);
       this.updatePersonality(dt);
