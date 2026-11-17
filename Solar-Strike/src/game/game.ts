@@ -19,6 +19,7 @@ import * as sfx from '../audio/sfx';
 import { Orbiters, type Orbiter, type OrbiterKind } from './orbiters';
 import { SleeperCharges } from './charges';
 import { CivilianShips } from './civilians';
+import { Defences, SHIELD_R, type DefenceKind } from './defences';
 
 interface Projectile {
   spec: ProjectileSpec;
@@ -40,6 +41,8 @@ interface Projectile {
   approach: THREE.Vector3 | null;
   /** Aimed at an orbiting target instead of the surface. */
   orbiter: Orbiter | null;
+  /** Planet defences may shoot it down (not black holes, lances or the planet's own ejecta). */
+  interceptable: boolean;
 }
 
 interface Shockwave {
@@ -95,6 +98,10 @@ export interface GameEvents {
   onChargesChanged?: (count: number) => void;
   /** A civilian ship was destroyed. */
   onShipDown?: () => void;
+  /** A defence was knocked out (or the shield broke). */
+  onDefenceDown?: (kind: DefenceKind) => void;
+  /** Shield strength 0..1, or null when the planet has no shield. */
+  onShield?: (level: number | null) => void;
 }
 
 const SUN_DIR = new THREE.Vector3(1, 0.3, -0.3).normalize();
@@ -134,6 +141,8 @@ export class Game {
   private orbiters: Orbiters | null = null;
   private charges: SleeperCharges | null = null;
   private ships: CivilianShips | null = null;
+  private defences: Defences | null = null;
+  private lastShield: number | null = -1;
   private shatter: Shatter | null = null;
   destroyed = false;
 
@@ -272,6 +281,24 @@ export class Game {
       this.ships = new CivilianShips(def.civilianShips);
       this.scene.add(this.ships.group);
     }
+    if (def.defences) {
+      const sites = this.defenceSites(Defences.sitesNeeded(def.defences));
+      this.defences = new Defences(planet.group, def.defences, sites, (g, out) => planet.gridToWorld(g, out));
+      this.scene.add(this.defences.group);
+      this.defences.onDown = (kind, at) => this.defenceDown(kind, at);
+      this.defences.onIntercept = (t, at) => {
+        const i = this.projectiles.indexOf(t as Projectile);
+        if (i < 0) return;
+        this.removeProjectile(i);
+        this.flashes.spawn(at, 0.55, 0xffe0a0, 0.25);
+        for (let k = 0; k < 12; k++) {
+          const v = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(0.3 + Math.random() * 0.5);
+          this.particles.spawn({ x: at.x, y: at.y, z: at.z, vx: v.x, vy: v.y, vz: v.z, r: 1, g: 0.8, b: 0.5, size: 0.03 + Math.random() * 0.03, life: 0.3 + Math.random() * 0.3, drag: 1.8 });
+        }
+        sfx.explosion(0.06);
+      };
+    }
+    this.lastShield = -1;
     this.lastIntegrity = 1;
     this.stability = 1;
     this.planetTime = 0;
@@ -310,6 +337,8 @@ export class Game {
     this.charges = null;
     this.ships?.dispose();
     this.ships = null;
+    this.defences?.dispose();
+    this.defences = null;
     this.clouds?.dispose();
     this.clouds = null;
     if (this.planetRings) {
@@ -544,6 +573,7 @@ export class Game {
       homing: o.homing ?? spec.homing ?? 6, armAt: o.armAt ?? 0, canSplit: o.canSplit ?? false,
       approach: o.approach?.clone() ?? null,
       orbiter: o.orbiter ?? null,
+      interceptable: spec !== EJECTA_SPEC && !spec.isBlackHole && !spec.isKinetic,
     });
   }
 
@@ -556,6 +586,46 @@ export class Game {
       if (m.material) (m.material as THREE.Material).dispose();
     });
     this.projectiles.splice(i, 1);
+  }
+
+  /** `n` well-spread surface points on land (grid coords) for defence sites. */
+  private defenceSites(n: number): THREE.Vector3[] {
+    const planet = this.planet!;
+    const out: THREE.Vector3[] = [];
+    const dirs: THREE.Vector3[] = [];
+    const tmp = new Float32Array(3);
+    const c = new THREE.Vector3(CENTER, CENTER, CENTER);
+    for (let minAngle = 0.7; out.length < n && minAngle > 0.05; minAngle *= 0.7) {
+      for (let tries = 0; tries < 600 && out.length < n; tries++) {
+        const v = new THREE.Vector3(Math.random() * 2 - 1, (Math.random() * 2 - 1) * 0.8, Math.random() * 2 - 1).normalize();
+        if (!planet.surface.sample(v.x, v.y, v.z, tmp)) continue;
+        if (dirs.some(d => d.angleTo(v) < minAngle)) continue;
+        const g = this.surfacePoint(c.clone().addScaledVector(v, RADIUS_VOX));
+        if (!g) continue;
+        dirs.push(v);
+        out.push(g);
+      }
+    }
+    return out;
+  }
+
+  /** A defence was knocked out: a burst of sparks, a bang, and the reward. */
+  private defenceDown(kind: DefenceKind, at: THREE.Vector3): void {
+    if (kind === 'shield') {
+      this.flashes.spawn(new THREE.Vector3(), SHIELD_R * 2.4, 0x60e0ff, 0.6);
+      this.rings.spawn(this.scene, new THREE.Vector3(), this.camera.position.clone().normalize(), SHIELD_R * 1.3, 0x80e8ff, 1.2);
+      sfx.crack();
+      this.events.onCallout?.('SHIELD DOWN!');
+    } else {
+      this.flashes.spawn(at, kind === 'satellite' ? 0.8 : 1.1, 0xffd090, 0.35);
+      for (let k = 0; k < 24; k++) {
+        const v = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(0.3 + Math.random());
+        this.particles.spawn({ x: at.x, y: at.y, z: at.z, vx: v.x, vy: v.y, vz: v.z, r: 1, g: 0.6 + Math.random() * 0.3, b: 0.3, size: 0.03 + Math.random() * 0.05, life: 0.4 + Math.random() * 0.4, drag: 1.5 });
+      }
+      sfx.explosion(0.2);
+    }
+    this.rig.shake(kind === 'shield' ? 0.3 : 0.08);
+    this.events.onDefenceDown?.(kind);
   }
 
   /** Project a grid point onto the current surface, along the line to the centre. */
