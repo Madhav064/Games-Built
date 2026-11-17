@@ -1336,6 +1336,23 @@ export class Game {
       const reach = hitG ? planet.gridToWorld(hitG, this.tmpC).distanceTo(ray.origin) : 30;
       for (const at of this.ships.rayBlast(ray.origin, ray.direction, reach, 0.06)) this.shipDown(at);
     }
+    if (this.defences) {
+      const reach = hitG ? planet.gridToWorld(hitG, this.tmpC).distanceTo(ray.origin) : Infinity;
+      const ds = this.defences.raycastSatellite(ray.origin, ray.direction);
+      if (ds && ds.dist < reach) this.defences.hitSatellite(ds.sat, dt * 6);
+      // A shield stops beams at its surface and drains while they play on it.
+      const st = this.defences.raycastShield(ray.origin, ray.direction);
+      if (st !== null && st < reach) {
+        const at = ray.origin.clone().addScaledVector(ray.direction, st);
+        this.defences.shieldBeam(at, dt * 30 * Math.min(3, 1 + this.beamHold * 0.6));
+        this.beam.show(from, at, width, dt);
+        if (Math.random() < 0.5) {
+          const v = at.clone().normalize().multiplyScalar(0.4 + Math.random() * 0.4);
+          this.particles.spawn({ x: at.x, y: at.y, z: at.z, vx: v.x + (Math.random() - 0.5) * 0.5, vy: v.y + (Math.random() - 0.5) * 0.5, vz: v.z + (Math.random() - 0.5) * 0.5, r: 0.6, g: 0.95, b: 1, size: 0.04, life: 0.3, drag: 1.5 });
+        }
+        return;
+      }
+    }
     if (!hitG) {
       this.beam.show(from, ray.origin.clone().addScaledVector(ray.direction, 30), width, dt);
       return;
