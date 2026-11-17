@@ -995,6 +995,7 @@ export class Game {
         s.carveRadius = Math.min(13, s.carveRadius + 0.3);
         planet.carve(s.gridPos.x, s.gridPos.y, s.gridPos.z, s.carveRadius, 0.4);
         this.charges?.trigger(s.gridPos, s.carveRadius + 1.5);
+        this.defences?.blast(s.gridPos, s.carveRadius);
         if (this.ships) for (const at of this.ships.blast(s.pos, 0.45)) this.shipDown(at);
         planet.addHeat(s.gridPos.x, s.gridPos.y, s.gridPos.z, s.carveRadius * 1.3, 0.3);
         this.population?.blast(s.gridPos.x, s.gridPos.y, s.gridPos.z, s.carveRadius * 1.4);
@@ -1041,6 +1042,7 @@ export class Game {
     const crater = frozen ? s.crater * 1.7 : s.crater;
     const res = planet.carve(g.x, g.y, g.z, crater);
     this.charges?.trigger(g, crater + 2.5);
+    this.defences?.blast(g, crater);
     this.damageStability(frozen ? s.stability * 1.7 : s.stability);
     planet.addHeat(g.x, g.y, g.z, crater * s.heatRadius, s.heat);
     this.population?.blast(g.x, g.y, g.z, crater * 1.2);
@@ -1357,6 +1359,7 @@ export class Game {
         planet.carve(c.x, c.y, c.z, r, 0.15);
       }
       this.charges?.trigger(hitG, r + 1.5);
+      this.defences?.blast(hitG, r);
       if (spec.isCryo) {
         planet.freeze(hitG.x, hitG.y, hitG.z, r * 2.8, 3.2 * STEP * 6);
       } else {
