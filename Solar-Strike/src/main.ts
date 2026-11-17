@@ -8,6 +8,7 @@ import { WEAPONS, type WeaponDef } from './game/weapons';
 import { applyMissionEvent, describeMission, ensureMissions, missionProgressText, type MissionContext, type MissionEvent } from './game/missions';
 import { ACHIEVEMENTS, checkAchievements, claimedTiers } from './game/achievements';
 import { ORBITER_REWARD } from './game/orbiters';
+import { SHIP_REWARD } from './game/civilians';
 import * as sdk from './sdk/crazygames';
 import * as sfx from './audio/sfx';
 
@@ -483,6 +484,14 @@ async function boot(): Promise<void> {
   };
   game.events.onCallout = text => hud.callout(text);
   game.events.onChargesChanged = n => hud.setCharges(n);
+  game.events.onShipDown = () => {
+    if (!inGame) return;
+    const rank = progress.addXp(SHIP_REWARD);
+    progress.addCoins(SHIP_REWARD);
+    hud.coinGain(SHIP_REWARD);
+    syncWallet();
+    if (rank) onRankUp(rank);
+  };
   game.events.onXp = amount => {
     if (!inGame) return;
     const rank = progress.addXp(amount);
