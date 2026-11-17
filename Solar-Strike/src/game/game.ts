@@ -1565,6 +1565,12 @@ export class Game {
         for (const s of this.singularities) dangers.push(s.pos);
         this.ships.update(dt, dangers);
       }
+      if (this.defences) {
+        this.defences.update(dt, this.projectiles);
+        const lvl = this.defences.shieldLevel;
+        const q = lvl === null ? null : Math.round(lvl * 50) / 50;
+        if (q !== this.lastShield) { this.lastShield = q; this.events.onShield?.(q); }
+      } else if (this.lastShield !== null) { this.lastShield = null; this.events.onShield?.(null); }
       this.orbiters?.update(dt);
       this.updatePersonality(dt);
       this.impactLight.intensity *= Math.exp(-dt * 8);
