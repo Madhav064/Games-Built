@@ -50,6 +50,8 @@ export interface PlanetDef {
   realMap?: 'earth' | 'earth2099';
   /** Civilian ships cruising low over the surface. */
   civilianShips?: number;
+  /** Defences that intercept the player's shots (see game/defences.ts). */
+  defences?: { shield?: boolean; missileBases?: number; satellites?: number };
 }
 
 /** gas: billows glowing gas and bursts into a cloud. star: throws solar flares. ice: always frozen, so every hit shatters. */
