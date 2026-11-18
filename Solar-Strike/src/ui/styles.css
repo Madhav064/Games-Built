@@ -161,6 +161,13 @@ html, body {
 .integrity { height: 6px; background: rgba(255,255,255,.1); border-radius: 3px; overflow: hidden; }
 .integrity-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #58d6ff, #6ee7a0); transition: width .25s; }
 .integrity-fill.low { background: linear-gradient(90deg, #ff5a5a, #ffb347); }
+.shield-row { display: flex; align-items: center; gap: 6px; margin-top: 5px; font-size: 11px; font-weight: 700; color: #8fe6ff; }
+.shield-row.hidden { display: none; }
+.shield-row.down { color: #ff8a8a; }
+.shield-text { white-space: nowrap; min-width: 74px; text-align: left; font-variant-numeric: tabular-nums; }
+.shield-bar { flex: 1; height: 4px; background: rgba(255,255,255,.1); border-radius: 2px; overflow: hidden; }
+.shield-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #48d8ff, #b4f2ff); transition: width .2s; }
+.pc-lock svg { width: 12px; height: 12px; }
 .tools { justify-self: end; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .icon-btn {
   width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; cursor: pointer;

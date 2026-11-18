@@ -138,6 +138,9 @@ export class Hud {
   private readonly planetName: HTMLElement;
   private readonly popText: HTMLElement;
   private readonly integrityFill: HTMLElement;
+  private readonly shieldRow: HTMLElement;
+  private readonly shieldText: HTMLElement;
+  private readonly shieldFill: HTMLElement;
   private readonly weaponBar: HTMLElement;
   private readonly weaponInfo: HTMLElement;
   private readonly hint: HTMLElement;
@@ -287,7 +290,13 @@ export class Hud {
     const integ = el('div', 'integrity');
     this.integrityFill = el('div', 'integrity-fill');
     integ.append(this.integrityFill);
-    center.append(this.planetName, this.popText, integ);
+    this.shieldRow = el('div', 'shield-row hidden');
+    this.shieldText = el('span', 'shield-text', 'Shield');
+    const shieldBar = el('div', 'shield-bar');
+    this.shieldFill = el('div', 'shield-fill');
+    shieldBar.append(this.shieldFill);
+    this.shieldRow.append(this.shieldText, shieldBar);
+    center.append(this.planetName, this.popText, integ, this.shieldRow);
 
     const tools = el('div', 'tools');
     const mk = (icon: string, label: string) => {
@@ -674,6 +683,15 @@ export class Hud {
     this.popText.textContent = total > 0 ? `Population ${formatPeople(population)}${isCritical ? ' (CRITICAL)' : ''}` : (isCritical ? '⚠️ CORE UNSTABLE' : 'Uninhabited');
     this.integrityFill.style.width = `${pct * 100}%`;
     this.integrityFill.classList.toggle('low', pct < 0.35);
+  }
+
+  /** Planetary shield strength under the planet name (null hides it). */
+  setShield(level: number | null): void {
+    this.shieldRow.classList.toggle('hidden', level === null);
+    if (level === null) return;
+    this.shieldFill.style.width = `${level * 100}%`;
+    this.shieldText.textContent = level > 0 ? `Shield ${Math.round(level * 100)}%` : 'Shield down';
+    this.shieldRow.classList.toggle('down', level <= 0);
   }
 
   setRank(rank: Rank, progress: number): void {
