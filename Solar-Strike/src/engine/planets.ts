@@ -239,9 +239,9 @@ export const PLANETS: PlanetDef[] = [
   {
     id: 'kepler',
     name: 'Kepler-442b',
-    blurb: 'A distant super-Earth. Alien oceans, strange biomes and no known inhabitants.',
+    blurb: 'A distant super-Earth colony. Alien oceans, busy shuttle lanes and armed satellites on guard.',
     seed: 442,
-    population: 0,
+    population: 45_000,
     terrainAmp: 2.2,
     terrainFreq: 1.3,
     seaLevel: 0.05,
@@ -255,7 +255,9 @@ export const PLANETS: PlanetDef[] = [
     clouds: { color: 0xe8f0ff, coverage: 0.48, opacity: 0.8 },
     atmosphere: { color: 0x40b8ff, strength: 1.2 },
     price: 800,
-    orbiters: { satellites: 3 },
+    orbiters: { satellites: 1 },
+    civilianShips: 6,
+    defences: { satellites: 3 },
   },
   {
     id: 'saturn',
