@@ -47,6 +47,14 @@ The health bar shows whichever is closest to breaking. A brand-new player's firs
 
 Planet kinds (`kind` in `planets.ts`): **gas** giants billow gas and burst into a cloud, the **star** throws solar flares and ends in a supernova shell, **ice** worlds are always frozen so every hit shatters.
 
+## Earth, Earth 2099 and living worlds
+
+- **Real Earth**: Earth and Earth 2099 use real coastlines and colours, packed into `src/engine/earthMap.ts` (about 200 KB) by `scripts/build-earth-map.py`. Sources are public domain, from [Natural Earth](https://www.naturalearthdata.com): `ne_50m_land` (coastlines) and `NE1_50M_SR_W` (colours with shaded relief). Rebuild with `python scripts/build-earth-map.py <ne_50m_land.geojson> <NE1_50M_SR_W.tif>`.
+- **Earth 2099** (`src/game/defences.ts`): unlocks the first time Earth is destroyed. It has a shield (absorbs shots and beams, recharges, breaks for 10 s, reboots while any of its 3 ground generators survive), 5 missile bases (one interceptor at a time, 1.6 s reload) and 4 armed satellites (0.28 s beam, 2.2 s cooldown). Kepler-442b has 3 armed satellites. Defences only stop shots; nothing damages the player. Rewards: shield break 50, generator 60, base 40, satellite 30.
+- **Civilian ships** (`src/game/civilians.ts`): Mars, Titan and Kepler-442b. They cruise low, swerve away from incoming shots and black holes, and leave for space while new ones arrive. 15 coins each.
+- **Sleeper Charges** (`src/game/charges.ts`): up to 12 planted charges. They go off on the Detonate button (a chain, 0.16 s apart) or when any blast, beam, black hole or shockwave reaches them.
+- **Launch points**: every weapon fires from its own fixed spot relative to the camera (`launch` in `weapons.ts`): beams and Core Lance from the bottom-right edge, missiles from behind the camera, rocks from above, Black Hole at the tap point.
+
 ## First minute
 
 New players start on the Missile with a pulsing "tap the planet" ring, then get two one-line tips (hold for a volley, try the Laser). The first results screen adds 300 starter coins. Older saves skip all of this.
@@ -71,7 +79,7 @@ New players start on the Missile with a pulsing "tap the planet" ring, then get 
 
 ## Design reference (from REA analysis of the genre leader)
 
-Concepts used, not copied: voxel planet + marching/surface-net meshing, damage radius + falloff ring + heat/scorch, shockwave spread, core temperature, population counter, unlocks, rewarded weapon trials, interstitial cooldown, N-body "system" mode (planned for v2). All names, weapons, planets, art and audio in this game are our own.
+Concepts used, not copied: voxel planet + marching/surface-net meshing, damage radius + falloff ring + heat/scorch, shockwave spread, core temperature, population counter, unlocks, rewarded weapon trials, interstitial cooldown, N-body "system" mode (planned for v2), per-weapon launch points, remote-detonated charges, civilian ship traffic, and planetary defences (shield with power sources, interceptor bases, armed satellites). All names, weapons, planets, art and audio in this game are our own.
 
 ## Renaming
 
