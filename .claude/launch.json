@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "wall-duel-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "Rush-Wall", "run", "dev", "--", "--port", "5173", "--strictPort"],
+      "port": 5173
+    },
+    {
+      "name": "solar-strike-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "Solar-Strike", "run", "dev", "--", "--port", "5191", "--strictPort"],
+      "port": 5191
+    }
+  ]
+}
