@@ -9,6 +9,7 @@ import { applyMissionEvent, describeMission, ensureMissions, missionProgressText
 import { ACHIEVEMENTS, checkAchievements, claimedTiers } from './game/achievements';
 import { ORBITER_REWARD } from './game/orbiters';
 import { SHIP_REWARD } from './game/civilians';
+import { DEFENCE_REWARD } from './game/defences';
 import * as sdk from './sdk/crazygames';
 import * as sfx from './audio/sfx';
 
@@ -484,6 +485,16 @@ async function boot(): Promise<void> {
   };
   game.events.onCallout = text => hud.callout(text);
   game.events.onChargesChanged = n => hud.setCharges(n);
+  game.events.onShield = level => hud.setShield(level);
+  game.events.onDefenceDown = kind => {
+    if (!inGame) return;
+    const reward = DEFENCE_REWARD[kind];
+    const rank = progress.addXp(reward);
+    progress.addCoins(reward);
+    hud.coinGain(reward);
+    syncWallet();
+    if (rank) onRankUp(rank);
+  };
   game.events.onShipDown = () => {
     if (!inGame) return;
     const rank = progress.addXp(SHIP_REWARD);
