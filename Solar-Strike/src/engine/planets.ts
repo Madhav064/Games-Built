@@ -52,6 +52,8 @@ export interface PlanetDef {
   civilianShips?: number;
   /** Defences that intercept the player's shots (see game/defences.ts). */
   defences?: { shield?: boolean; missileBases?: number; satellites?: number };
+  /** Locked until this planet has been destroyed once (no coin price). */
+  unlockAfter?: string;
 }
 
 /** gas: billows glowing gas and bursts into a cloud. star: throws solar flares. ice: always frozen, so every hit shatters. */
@@ -80,6 +82,31 @@ export const PLANETS: PlanetDef[] = [
     price: 0,
     orbiters: { satellites: 4, stations: 1 },
     realMap: 'earth',
+  },
+  {
+    id: 'earth2099',
+    name: 'Earth 2099',
+    blurb: 'Home, 75 years on. 14 billion people under a planetary shield, missile bases and armed satellites.',
+    seed: 2099,
+    population: 14_000_000_000,
+    terrainAmp: 1.6,
+    terrainFreq: 1.6,
+    seaLevel: 0.1,
+    iceCap: 0.975,
+    craters: 0,
+    colors: {
+      deepOcean: 0x061e3a, ocean: 0x0f3f66, shore: 0x8a8f86,
+      low: 0x5a6068, mid: 0x6a7078, high: 0x7c7a70, peak: 0xdfe4ea, ice: 0xeef3f8,
+      crust: 0x5a5560, mantle: 0x8a2a10, outerCore: 0xff7a1a, innerCore: 0xfff2b0,
+    },
+    clouds: { color: 0xe4e8ee, coverage: 0.32, opacity: 0.7 },
+    atmosphere: { color: 0x7ab0ff, strength: 1.1 },
+    price: 0,
+    unlockAfter: 'earth',
+    toughness: 1.4,
+    orbiters: { stations: 2 },
+    realMap: 'earth2099',
+    defences: { shield: true, missileBases: 5, satellites: 4 },
   },
   {
     id: 'mars',
