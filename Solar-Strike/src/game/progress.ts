@@ -53,7 +53,7 @@ function defaults(): SaveState {
     xp: 0,
     coins: 0,
     ownedWeapons: WEAPONS.filter(w => w.price === 0).map(w => w.id),
-    ownedPlanets: PLANETS.filter(p => p.price === 0).map(p => p.id),
+    ownedPlanets: PLANETS.filter(p => p.price === 0 && !p.unlockAfter).map(p => p.id),
     planetsDestroyed: 0,
     peopleKilled: 0,
     shotsFired: 0,
@@ -118,7 +118,11 @@ export class Progress {
         if (!Array.isArray(s.destroyedPlanets)) s.destroyedPlanets = [];
         // Free items are always owned, even ones added after the save was made.
         for (const w of WEAPONS) if (w.price === 0 && !s.ownedWeapons.includes(w.id)) s.ownedWeapons.push(w.id);
-        for (const p of PLANETS) if (p.price === 0 && !s.ownedPlanets.includes(p.id)) s.ownedPlanets.push(p.id);
+        for (const p of PLANETS) {
+          // Free planets are owned; "destroy X first" planets once X has been destroyed.
+          const free = p.price === 0 && (!p.unlockAfter || s.destroyedPlanets.includes(p.unlockAfter));
+          if (free && !s.ownedPlanets.includes(p.id)) s.ownedPlanets.push(p.id);
+        }
       }
     } catch { /* corrupt save: start fresh */ }
     this.state = s;

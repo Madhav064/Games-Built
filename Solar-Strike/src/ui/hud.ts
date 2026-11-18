@@ -450,7 +450,10 @@ export class Hud {
         el('div', 'pc-pop', p.population > 0 ? `Population ${formatPeople(p.population)}` : 'Uninhabited'),
       );
       card.append(ball, info);
-      if (locked) {
+      if (locked && p.unlockAfter) {
+        const need = PLANETS.find(q => q.id === p.unlockAfter)?.name ?? p.unlockAfter;
+        card.append(el('div', 'pc-lock', `${svg(ICONS.lock)} Destroy ${need}`));
+      } else if (locked) {
         const can = this.coins >= p.price;
         card.append(el('div', `pc-lock${can ? ' can-buy' : ''}`, `${COIN} ${formatCoins(p.price)}`));
       }
@@ -533,7 +536,8 @@ export class Hud {
     this.shopGrid.innerHTML = '';
     const items = this.shopTab === 'weapon'
       ? WEAPONS.map(w => ({ id: w.id, name: w.name, blurb: w.blurb, price: w.price, owned: this.ownedWeapons.has(w.id), tag: w.category, weapon: w, planet: null as PlanetDef | null }))
-      : PLANETS.map(p => ({ id: p.id, name: p.name, blurb: p.blurb, price: p.price, owned: this.ownedPlanets.has(p.id), tag: p.population > 0 ? 'Inhabited' : 'Uninhabited', weapon: null as WeaponDef | null, planet: p }));
+      // "Destroy X to unlock" planets can't be bought, so they stay out of the shop.
+      : PLANETS.filter(p => !p.unlockAfter).map(p => ({ id: p.id, name: p.name, blurb: p.blurb, price: p.price, owned: this.ownedPlanets.has(p.id), tag: p.population > 0 ? 'Inhabited' : 'Uninhabited', weapon: null as WeaponDef | null, planet: p }));
     // Owned items last so the next thing to buy is at the top.
     items.sort((a, b) => Number(a.owned) - Number(b.owned) || a.price - b.price);
     for (const it of items) {

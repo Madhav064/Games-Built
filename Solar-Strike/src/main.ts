@@ -319,6 +319,11 @@ async function boot(): Promise<void> {
     onSelectPlanet: p => void selectPlanet(p),
     onLockedPlanet: async p => {
       sfx.click();
+      if (p.unlockAfter) {
+        const need = PLANETS.find(q => q.id === p.unlockAfter)?.name ?? p.unlockAfter;
+        await hud.choose(`${p.name} is locked`, `Destroy ${need} to unlock ${p.name}. ${p.blurb}`, [{ label: 'OK', cls: 'btn-primary' }]);
+        return;
+      }
       const coins = progress.state.coins;
       const can = coins >= p.price;
       const body = can
@@ -479,6 +484,15 @@ async function boot(): Promise<void> {
     const s = progress.state;
     s.planetsDestroyed++;
     if (!s.destroyedPlanets.includes(planet.id)) s.destroyedPlanets.push(planet.id);
+    // Destroying a planet can unlock another (Earth -> Earth 2099).
+    for (const p of PLANETS) {
+      if (p.unlockAfter === planet.id && !s.ownedPlanets.includes(p.id)) {
+        s.ownedPlanets.push(p.id);
+        progress.saveNow();
+        syncWallet();
+        setTimeout(() => hud.toast(`<b>${p.name}</b> unlocked!`, 'level', 3200), 2800);
+      }
+    }
     if (s.fastestDestroy <= 0 || seconds < s.fastestDestroy) s.fastestDestroy = seconds;
     missionEvent({ type: 'destroyed', planet: planet.id, seconds, weapons: [...weaponsUsed] });
     checkAch();
